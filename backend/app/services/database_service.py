@@ -3,15 +3,15 @@ from sqlalchemy.orm import Session
 from app.repositories.database_repository import DatabaseRepository
 from app.repositories.sql_server_repository import SQLServerRepository
 from app.schemas.database import DatabaseCreate, DatabaseUpdate
-
+from app.models.user import User
 
 class DatabaseService:
     def __init__(self, db: Session):
         self.repository = DatabaseRepository(db)
         self.sql_server_repository = SQLServerRepository(db)
 
-    def list_databases(self):
-        return self.repository.list_all()
+    def list_databases(self, current_user: User):
+        return self.repository.list_all(current_user)
 
     def get_database(self, database_id: int):
         database = self.repository.get_by_id(database_id)

@@ -34,8 +34,14 @@ def verify_access_token(
             token,
             signing_key.key,
             algorithms=["RS256"],
-            audience=settings.entra_client_id,
-            issuer=f"https://login.microsoftonline.com/{settings.entra_tenant_id}/v2.0",
+            audience=[
+                settings.entra_client_id,
+                f"api://{settings.entra_client_id}",
+            ],
+            issuer=[
+                f"https://login.microsoftonline.com/{settings.entra_tenant_id}/v2.0",
+                f"https://sts.windows.net/{settings.entra_tenant_id}/",
+            ],
         )
 
         return payload

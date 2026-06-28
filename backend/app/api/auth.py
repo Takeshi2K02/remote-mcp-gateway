@@ -19,7 +19,7 @@ oauth.register(
         f"{settings.entra_tenant_id}/v2.0/.well-known/openid-configuration"
     ),
     client_kwargs={
-        "scope": "openid profile email User.Read",
+        "scope": "openid profile email api://43208698-d37b-4218-9e06-d9a6a0834f1e/access_as_user",
         "timeout": 30,
     },
 )

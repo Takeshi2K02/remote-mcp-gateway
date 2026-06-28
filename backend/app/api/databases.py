@@ -9,6 +9,7 @@ from app.schemas.database import (
     DatabaseUpdate,
 )
 from app.services.database_service import DatabaseService
+from app.auth.authorization import require_database_access
 
 router = APIRouter(prefix="/databases", tags=["Databases"])
 
@@ -19,15 +20,21 @@ def list_databases(
     current_user: User = Depends(get_current_user)   
     ):
     service = DatabaseService(db)
-    return service.list_databases()
+    return service.list_databases(current_user)
 
 
 @router.get("/{database_id}", response_model=DatabaseResponse)
 def get_database(
     database_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)   
+    current_user: User = Depends(get_current_user),
 ):
+    require_database_access(
+        db=db,
+        current_user=current_user,
+        database_id=database_id,
+    )
+
     service = DatabaseService(db)
     return service.get_database(database_id)
 
@@ -53,6 +60,12 @@ def update_database(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)   
 ):
+    require_database_access(
+        db=db,
+        current_user=current_user,
+        database_id=database_id,
+    )
+
     service = DatabaseService(db)
     return service.update_database(database_id, data)
 
@@ -66,6 +79,12 @@ def delete_database(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)   
 ):
+    require_database_access(
+        db=db,
+        current_user=current_user,
+        database_id=database_id,
+    )
+    
     service = DatabaseService(db)
     service.delete_database(database_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
