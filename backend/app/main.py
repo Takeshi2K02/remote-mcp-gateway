@@ -3,6 +3,10 @@ from app.core.config import get_settings
 from sqlalchemy import text
 from app.db.database import get_db
 from sqlalchemy.orm import Session
+from app.api.sql_servers import router as sql_server_router
+from app.api.databases import router as database_router
+from app.api.user_database_permissions import router as user_database_permission_router
+
 
 settings = get_settings()
 
@@ -22,3 +26,7 @@ def health_check() -> dict[str, str]:
         "status": "ok",
         "environment": settings.app_env,
     }
+
+app.include_router(sql_server_router)
+app.include_router(database_router)
+app.include_router(user_database_permission_router)
