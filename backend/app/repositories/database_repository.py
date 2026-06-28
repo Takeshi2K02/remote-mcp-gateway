@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session
 from app.models.database import Database
 from app.schemas.database import DatabaseCreate, DatabaseUpdate
-
+from app.models.user_database_permission import UserDatabasePermission
+from app.models.user import User
 
 class DatabaseRepository:
     def __init__(self, db: Session):
@@ -24,8 +25,16 @@ class DatabaseRepository:
             .first()
         )
 
-    def list_all(self) -> list[Database]:
-        return self.db.query(Database).order_by(Database.created_at.desc()).all()
+    def list_all(self, current_user: User):
+        return (
+            self.db.query(Database)
+            .join(
+                UserDatabasePermission,
+                Database.id == UserDatabasePermission.database_id,
+            )
+            .filter(UserDatabasePermission.user_id == current_user.id)
+            .all()
+        )
 
     def create(self, data: DatabaseCreate) -> Database:
         database = Database(**data.model_dump())
