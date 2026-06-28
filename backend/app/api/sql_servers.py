@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
-
+from app.auth.dependencies import get_current_user
+from app.models.user import User
 from app.db.database import get_db
 from app.schemas.sql_server import (
     SQLServerCreate,
@@ -13,7 +14,10 @@ router = APIRouter(prefix="/sql-servers", tags=["SQL Servers"])
 
 
 @router.get("/", response_model=list[SQLServerResponse])
-def list_sql_servers(db: Session = Depends(get_db)):
+def list_sql_servers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)       
+):
     service = SQLServerService(db)
     return service.list_sql_servers()
 
@@ -22,6 +26,7 @@ def list_sql_servers(db: Session = Depends(get_db)):
 def get_sql_server(
     sql_server_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     service = SQLServerService(db)
     return service.get_sql_server(sql_server_id)
@@ -35,6 +40,7 @@ def get_sql_server(
 def create_sql_server(
     data: SQLServerCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     service = SQLServerService(db)
     return service.create_sql_server(data)
@@ -45,6 +51,7 @@ def update_sql_server(
     sql_server_id: int,
     data: SQLServerUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     service = SQLServerService(db)
     return service.update_sql_server(sql_server_id, data)
@@ -57,6 +64,7 @@ def update_sql_server(
 def delete_sql_server(
     sql_server_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     service = SQLServerService(db)
     service.delete_sql_server(sql_server_id)
