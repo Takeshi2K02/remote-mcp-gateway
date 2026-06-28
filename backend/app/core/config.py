@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")
 
+    entra_tenant_id: str = Field(alias="ENTRA_TENANT_ID")
+    entra_client_id: str = Field(alias="ENTRA_CLIENT_ID")
+    entra_client_secret: str = Field(alias="ENTRA_CLIENT_SECRET")
+
     db_host: str = Field(alias="DB_HOST")
     db_port: int = Field(default=1433, alias="DB_PORT")
     db_name: str = Field(alias="DB_NAME")
