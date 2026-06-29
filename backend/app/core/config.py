@@ -22,6 +22,16 @@ class Settings(BaseSettings):
     db_driver: str = Field(alias="DB_DRIVER")
 
     azure_key_vault_url: str = Field(alias="AZURE_KEY_VAULT_URL")
+
+    sql_query_timeout_seconds: int = Field(
+    default=30,
+    alias="SQL_QUERY_TIMEOUT_SECONDS",
+)
+
+    sql_max_rows: int = Field(
+    default=1000,
+    alias="SQL_MAX_ROWS",
+)
     
     secret_key: str = Field(alias="SECRET_KEY")
 
