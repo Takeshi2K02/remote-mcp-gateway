@@ -25,6 +25,27 @@ class SQLServer(Base):
         nullable=False,
     )
 
+    authentication_type: Mapped[str] = mapped_column(
+        String(50),
+        default="sql_password",
+        nullable=False,
+    )
+
+    username: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    secret_reference: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
+    connection_options: Mapped[str | None] = mapped_column(
+        String(1000),
+        nullable=True,
+    )
+
     description: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,
