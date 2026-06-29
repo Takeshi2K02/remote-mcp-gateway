@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     db_password: str = Field(alias="DB_PASSWORD")
     db_driver: str = Field(alias="DB_DRIVER")
 
+    azure_key_vault_url: str = Field(alias="AZURE_KEY_VAULT_URL")
+    
     secret_key: str = Field(alias="SECRET_KEY")
 
     model_config = SettingsConfigDict(

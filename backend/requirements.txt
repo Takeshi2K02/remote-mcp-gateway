@@ -4,6 +4,9 @@ annotated-types==0.7.0
 anyio==4.14.1
 attrs==26.1.0
 Authlib==1.7.2
+azure-core==1.41.0
+azure-identity==1.25.3
+azure-keyvault-secrets==4.11.0
 certifi==2026.6.17
 cffi==2.0.0
 charset-normalizer==3.4.7
@@ -17,6 +20,7 @@ httpcore==1.0.9
 httpx==0.28.1
 httpx-sse==0.4.3
 idna==3.18
+isodate==0.7.2
 itsdangerous==2.2.0
 joserfc==1.7.1
 jsonschema==4.26.0
@@ -24,6 +28,8 @@ jsonschema-specifications==2025.9.1
 Mako==1.3.12
 MarkupSafe==3.0.3
 mcp==1.28.1
+msal==1.37.0
+msal-extensions==1.3.1
 pycparser==3.0
 pydantic==2.13.4
 pydantic-settings==2.14.2
