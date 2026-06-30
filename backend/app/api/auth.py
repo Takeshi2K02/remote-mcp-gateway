@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import RedirectResponse
 from authlib.integrations.starlette_client import OAuth
-from app.core.config import get_settings
 from app.auth.dependencies import get_current_user
+from app.auth.jwt_service import create_access_token
+from app.core.config import get_settings
 from app.models.user import User
 
 settings = get_settings()
@@ -19,7 +21,10 @@ oauth.register(
         f"{settings.entra_tenant_id}/v2.0/.well-known/openid-configuration"
     ),
     client_kwargs={
-        "scope": "openid profile email api://43208698-d37b-4218-9e06-d9a6a0834f1e/access_as_user",
+        "scope": (
+            "openid profile email "
+            "api://43208698-d37b-4218-9e06-d9a6a0834f1e/access_as_user"
+        ),
         "timeout": 30,
     },
 )
@@ -34,13 +39,27 @@ async def login(request: Request):
 @router.get("/callback")
 async def auth_callback(request: Request):
     token = await oauth.microsoft.authorize_access_token(request)
+    user_info = token.get("userinfo")
 
-    return {
-        "access_token": token.get("access_token"),
-        "id_token": token.get("id_token"),
-        "token_type": token.get("token_type"),
-        "expires_in": token.get("expires_in"),
-    }
+    if not user_info:
+        user_info = await oauth.microsoft.userinfo(token=token)
+
+    entra_object_id = user_info.get("oid") or user_info.get("sub")
+    email = user_info.get("email") or user_info.get("preferred_username")
+    full_name = user_info.get("name")
+
+    app_token = create_access_token(
+        subject=str(entra_object_id),
+        claims={
+            "email": email,
+            "full_name": full_name,
+        },
+    )
+
+    return RedirectResponse(
+        url=f"{settings.frontend_base_url}/auth/callback?token={app_token}"
+    )
+
 
 @router.get("/me")
 def get_me(current_user: User = Depends(get_current_user)):
@@ -52,11 +71,11 @@ def get_me(current_user: User = Depends(get_current_user)):
         "is_active": current_user.is_active,
     }
 
+
 # TODO (Production):
-# Replace this development implementation that returns Microsoft access/id tokens.
-# Instead:
-# 1. Validate and process the authenticated user.
-# 2. Create/update the user in the database.
-# 3. Establish a secure application session (or issue an application-specific JWT).
-# 4. Redirect the user to the frontend without exposing Microsoft tokens.
-# This endpoint currently returns tokens only for development and testing purposes.
+# Complete local user sync during Microsoft callback:
+# 1. Validate Microsoft identity claims.
+# 2. Create/update local user by entra_object_id.
+# 3. Reject inactive users.
+# 4. Issue application JWT only after local authorization succeeds.
+# 5. Prefer HttpOnly secure cookies before production deployment.

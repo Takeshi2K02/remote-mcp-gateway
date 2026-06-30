@@ -1,5 +1,4 @@
 from functools import lru_cache
-
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -9,6 +8,11 @@ class Settings(BaseSettings):
     app_env: str = Field(default="development", alias="APP_ENV")
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")
+
+    frontend_base_url: str = Field(
+        default="http://localhost:3000",
+        alias="FRONTEND_BASE_URL",
+    )
 
     entra_tenant_id: str = Field(alias="ENTRA_TENANT_ID")
     entra_client_id: str = Field(alias="ENTRA_CLIENT_ID")
@@ -24,16 +28,23 @@ class Settings(BaseSettings):
     azure_key_vault_url: str = Field(alias="AZURE_KEY_VAULT_URL")
 
     sql_query_timeout_seconds: int = Field(
-    default=30,
-    alias="SQL_QUERY_TIMEOUT_SECONDS",
-)
+        default=30,
+        alias="SQL_QUERY_TIMEOUT_SECONDS",
+    )
 
     sql_max_rows: int = Field(
-    default=1000,
-    alias="SQL_MAX_ROWS",
-)
-    
+        default=1000,
+        alias="SQL_MAX_ROWS",
+    )
+
     secret_key: str = Field(alias="SECRET_KEY")
+
+    app_jwt_secret_key: str = Field(alias="APP_JWT_SECRET_KEY")
+    app_jwt_algorithm: str = Field(default="HS256", alias="APP_JWT_ALGORITHM")
+    app_jwt_expire_minutes: int = Field(
+        default=60,
+        alias="APP_JWT_EXPIRE_MINUTES",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
