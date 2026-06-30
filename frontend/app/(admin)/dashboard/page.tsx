@@ -1,33 +1,43 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getCurrentUser, type CurrentUser } from "@/features/auth/services/auth.service";
+import { StatsCard } from "@/features/dashboard/components/stats-card";
+import { UserCard } from "@/features/dashboard/components/user-card";
+import { HealthCard } from "@/features/dashboard/components/health-card";
+import { RecentAuditCard } from "@/features/dashboard/components/recent-audit-card";
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<CurrentUser | null>(null);
-
-  useEffect(() => {
-    async function loadUser() {
-      const currentUser = await getCurrentUser();
-      setUser(currentUser);
-    }
-
-    loadUser();
-  }, []);
-
   return (
-    <main className="p-6">
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
+    <div className="space-y-6">
+      {/* Title Header */}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard Overview</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Manage your SQL Server database registries, users, permissions, and settings.
+        </p>
+      </div>
 
-      <p className="text-muted-foreground">
-        You are signed in to Remote MCP Gateway.
-      </p>
+      {/* Main Stats Tiles */}
+      <section aria-label="Resource Statistics">
+        <StatsCard />
+      </section>
 
-      {user && (
-        <pre className="mt-4 rounded-md border p-4 text-sm">
-          {JSON.stringify(user, null, 2)}
-        </pre>
-      )}
-    </main>
+      {/* Detail Cards Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* User Card */}
+        <section aria-label="User Profile">
+          <UserCard />
+        </section>
+
+        {/* System Health Card */}
+        <section aria-label="System Health Status">
+          <HealthCard />
+        </section>
+
+        {/* Recent Audit Activities */}
+        <section aria-label="Recent Audit Log" className="lg:col-span-1">
+          <RecentAuditCard />
+        </section>
+      </div>
+    </div>
   );
 }
