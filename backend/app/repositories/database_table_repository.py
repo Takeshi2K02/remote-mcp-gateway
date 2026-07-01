@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 from app.models.database_table import DatabaseTable
 from app.schemas.database_table import (
@@ -34,6 +35,22 @@ class DatabaseTableRepository:
             .first()
         )
 
+    # Alias matching the discovery service convention
+    def get_by_schema_and_name(
+        self,
+        database_id: int,
+        schema_name: str,
+        table_name: str,
+    ):
+        return self.get_by_name(database_id, schema_name, table_name)
+
+    def list_by_database(self, database_id: int) -> list[DatabaseTable]:
+        return (
+            self.db.query(DatabaseTable)
+            .filter(DatabaseTable.database_id == database_id)
+            .all()
+        )
+
     def create(self, data: DatabaseTableCreate):
         table = DatabaseTable(**data.model_dump())
         self.db.add(table)
@@ -52,6 +69,39 @@ class DatabaseTableRepository:
         self.db.commit()
         self.db.refresh(table)
         return table
+
+    def upsert(
+        self,
+        database_id: int,
+        schema_name: str,
+        table_name: str,
+    ) -> tuple[DatabaseTable, bool]:
+        """
+        Insert or update a database table record.
+
+        Returns (table, created) where created=True if a new row was inserted.
+        Sets last_synced_at to now on every call.
+        """
+        existing = self.get_by_name(database_id, schema_name, table_name)
+        now = datetime.now(UTC)
+
+        if existing:
+            existing.last_synced_at = now
+            self.db.commit()
+            self.db.refresh(existing)
+            return existing, False
+
+        table = DatabaseTable(
+            database_id=database_id,
+            schema_name=schema_name,
+            table_name=table_name,
+            is_active=True,
+            last_synced_at=now,
+        )
+        self.db.add(table)
+        self.db.commit()
+        self.db.refresh(table)
+        return table, True
 
     def delete(self, table: DatabaseTable):
         self.db.delete(table)

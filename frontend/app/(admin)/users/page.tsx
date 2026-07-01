@@ -1,10 +1,18 @@
+import { UsersTable } from "@/features/users/components/users-table";
+
 export default function UsersPage() {
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold tracking-tight">Users</h1>
-      <p className="text-sm text-muted-foreground">
-        Manage users, access levels, and gateway authentication records.
-      </p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">User Management</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Administer gateway user accounts, status, security policies, and access credentials.
+        </p>
+      </div>
+
+      <section aria-label="User Accounts Directory">
+        <UsersTable />
+      </section>
     </div>
   );
 }

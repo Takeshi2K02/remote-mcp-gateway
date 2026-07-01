@@ -21,6 +21,7 @@ from app.api.user_table_permissions import (
 )
 from app.api.oauth_clients import router as oauth_clients_router
 from app.api.oauth import router as oauth_router
+from app.api.users import router as users_router
 from app.auth.middleware import MCPAuthMiddleware
 from app.core.config import get_settings
 from app.db.database import get_db
@@ -73,6 +74,7 @@ app.include_router(user_table_permission_router)
 app.include_router(oauth_clients_router)
 app.include_router(oauth_router)
 app.include_router(discovery_router)
+app.include_router(users_router)
 class MCPASGIWrapper:
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")

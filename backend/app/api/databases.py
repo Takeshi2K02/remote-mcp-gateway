@@ -8,7 +8,9 @@ from app.schemas.database import (
     DatabaseResponse,
     DatabaseUpdate,
 )
+from app.schemas.sync import SyncResponse
 from app.services.database_service import DatabaseService
+from app.services.sql_server_discovery_service import SQLServerDiscoveryService
 from app.auth.authorization import require_database_access
 
 router = APIRouter(prefix="/databases", tags=["Databases"])
@@ -88,3 +90,21 @@ def delete_database(
     service = DatabaseService(db)
     service.delete_database(database_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/{database_id}/sync",
+    response_model=SyncResponse,
+    summary="Sync tables for a database",
+    description=(
+        "Connects to the database and discovers all base tables, storing "
+        "them in the gateway. Safe to call repeatedly — uses upsert semantics."
+    ),
+)
+def sync_database_tables(
+    database_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    discovery = SQLServerDiscoveryService(db)
+    return discovery.sync_tables(database_id)
