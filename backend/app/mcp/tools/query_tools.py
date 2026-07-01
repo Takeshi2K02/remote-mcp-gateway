@@ -1,16 +1,15 @@
 from typing import Any
 from mcp.server.fastmcp import FastMCP
 from app.db.database import SessionLocal
-from app.mcp.context import MCPContext
+from app.mcp.context import MCPContext, get_current_context
 from app.services.sql_execution_service import SQLExecutionService
 
 
 def register_query_tools(mcp: FastMCP) -> None:
+    # TODO: Remove MCP debug logging after protocol verification
+    print("Inside register_query_tools()...", flush=True)
     @mcp.tool()
     def execute_query(
-        user_id: int,
-        entra_object_id: str,
-        email: str,
         sql_server_id: int,
         database_id: int,
         query: str,
@@ -24,10 +23,11 @@ def register_query_tools(mcp: FastMCP) -> None:
         db = SessionLocal()
 
         try:
+            request_ctx = get_current_context()
             context = MCPContext(
-                user_id=user_id,
-                entra_object_id=entra_object_id,
-                email=email,
+                user_id=request_ctx.user_id,
+                entra_object_id=request_ctx.entra_object_id,
+                email=request_ctx.email,
                 sql_server_id=sql_server_id,
                 database_id=database_id,
                 table_id=table_id,

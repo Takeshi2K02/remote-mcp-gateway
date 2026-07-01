@@ -2,6 +2,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
+from app.mcp.context import get_current_context
 from app.models.database import Database
 from app.models.database_table import DatabaseTable
 from app.models.user_database_permission import UserDatabasePermission
@@ -9,12 +10,15 @@ from app.models.user_table_permission import UserTablePermission
 
 
 def register_metadata_tools(mcp: FastMCP) -> None:
+    # TODO: Remove MCP debug logging after protocol verification
+    print("Inside register_metadata_tools()...", flush=True)
     @mcp.tool()
-    def list_accessible_databases(user_id: int) -> list[dict[str, Any]]:
+    def list_accessible_databases() -> list[dict[str, Any]]:
         """
         List databases the user is allowed to access.
         """
         db = SessionLocal()
+        user_id = get_current_context().user_id
 
         try:
             databases = (
@@ -25,7 +29,7 @@ def register_metadata_tools(mcp: FastMCP) -> None:
                 )
                 .filter(
                     UserDatabasePermission.user_id == user_id,
-                    Database.is_active.is_(True),
+                    Database.is_active,
                 )
                 .order_by(Database.name.asc())
                 .all()
@@ -46,13 +50,13 @@ def register_metadata_tools(mcp: FastMCP) -> None:
 
     @mcp.tool()
     def list_accessible_tables(
-        user_id: int,
         database_id: int,
     ) -> list[dict[str, Any]]:
         """
         List tables the user is allowed to access in a database.
         """
         db = SessionLocal()
+        user_id = get_current_context().user_id
 
         try:
             tables = (
@@ -64,7 +68,7 @@ def register_metadata_tools(mcp: FastMCP) -> None:
                 .filter(
                     UserTablePermission.user_id == user_id,
                     DatabaseTable.database_id == database_id,
-                    DatabaseTable.is_active.is_(True),
+                    DatabaseTable.is_active,
                 )
                 .order_by(
                     DatabaseTable.schema_name.asc(),
@@ -89,13 +93,13 @@ def register_metadata_tools(mcp: FastMCP) -> None:
 
     @mcp.tool()
     def describe_table(
-        user_id: int,
         table_id: int,
     ) -> dict[str, Any]:
         """
         Return registered metadata for a table.
         """
         db = SessionLocal()
+        user_id = get_current_context().user_id
 
         try:
             table = (
@@ -107,7 +111,7 @@ def register_metadata_tools(mcp: FastMCP) -> None:
                 .filter(
                     UserTablePermission.user_id == user_id,
                     UserTablePermission.table_id == table_id,
-                    DatabaseTable.is_active.is_(True),
+                    DatabaseTable.is_active,
                 )
                 .first()
             )

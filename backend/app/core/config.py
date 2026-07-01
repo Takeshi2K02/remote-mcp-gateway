@@ -46,6 +46,36 @@ class Settings(BaseSettings):
         alias="APP_JWT_EXPIRE_MINUTES",
     )
 
+    backend_base_url: str = Field(
+        default="http://localhost:8000",
+        alias="BACKEND_BASE_URL",
+    )
+
+    oauth_issuer: str = Field(
+        default="https://login.microsoftonline.com/2df94db0-c007-4150-be2c-594992121866/v2.0",
+        alias="OAUTH_ISSUER",
+    )
+
+    mcp_endpoint_url: str = Field(
+        default="http://localhost:8000/mcp",
+        alias="MCP_ENDPOINT_URL",
+    )
+
+    mcp_allowed_hosts: str = Field(
+        default="localhost,localhost:8000,127.0.0.1,127.0.0.1:8000,backend-gateway.gentleforest-38e3a42b.southeastasia.azurecontainerapps.io",
+        alias="MCP_ALLOWED_HOSTS",
+    )
+
+    mcp_allowed_origins: str = Field(
+        default="http://localhost:3000,https://claude.ai",
+        alias="MCP_ALLOWED_ORIGINS",
+    )
+
+    mcp_enable_dns_rebinding_protection: bool = Field(
+        default=True,
+        alias="MCP_ENABLE_DNS_REBINDING_PROTECTION",
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

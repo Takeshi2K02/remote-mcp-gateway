@@ -6,3 +6,5 @@ from .user import User
 from .user_database_permission import UserDatabasePermission
 from .user_sql_server_permission import UserSQLServerPermission
 from .user_table_permission import UserTablePermission
+from .oauth_client import OAuthClient
+from .oauth_authorization_code import OAuthAuthorizationCode
