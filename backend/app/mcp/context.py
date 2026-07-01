@@ -1,4 +1,50 @@
 from dataclasses import dataclass
+from contextvars import ContextVar
+
+
+@dataclass(slots=True)
+class MCPRequestContext:
+    """
+    Holds client identity details for the duration of an MCP request.
+    This context is set at the request entrypoint (e.g. middleware) and
+    is accessed within individual tools to guarantee user security.
+    """
+    user_id: int
+    entra_object_id: str
+    email: str
+    full_name: str | None = None
+    scopes: list[str] | None = None
+
+
+# ContextVar for storing the current request context in a task-local manner.
+_current_context: ContextVar[MCPRequestContext | None] = ContextVar(
+    "current_mcp_request_context", default=None
+)
+
+
+def set_current_context(context: MCPRequestContext) -> None:
+    """
+    Set the current MCP request context.
+    """
+    _current_context.set(context)
+
+
+def get_current_context() -> MCPRequestContext:
+    """
+    Retrieve the current MCP request context.
+    Raises ValueError if no context has been set.
+    """
+    ctx = _current_context.get()
+    if ctx is None:
+        raise ValueError("No active MCP request context found")
+    return ctx
+
+
+def clear_current_context() -> None:
+    """
+    Clear the current MCP request context.
+    """
+    _current_context.set(None)
 
 
 @dataclass(slots=True)

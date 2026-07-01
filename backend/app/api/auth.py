@@ -1,6 +1,9 @@
-from fastapi import APIRouter, Depends, Request
+from urllib.parse import urlencode
+from fastapi import APIRouter, Depends, Request, HTTPException, status
 from fastapi.responses import RedirectResponse
-from authlib.integrations.starlette_client import OAuth
+from authlib.integrations.starlette_client import OAuth  # type: ignore
+from sqlalchemy.orm import Session
+from app.db.database import get_db
 from app.auth.dependencies import get_current_user
 from app.auth.jwt_service import create_access_token
 from app.core.config import get_settings
@@ -32,12 +35,15 @@ oauth.register(
 
 @router.get("/login")
 async def login(request: Request):
-    redirect_uri = "http://localhost:8000/auth/callback"
+    redirect_uri = f"{settings.backend_base_url}/auth/callback"
     return await oauth.microsoft.authorize_redirect(request, redirect_uri)
 
 
 @router.get("/callback")
-async def auth_callback(request: Request):
+async def auth_callback(
+    request: Request,
+    db: Session = Depends(get_db),
+):
     token = await oauth.microsoft.authorize_access_token(request)
     user_info = token.get("userinfo")
 
@@ -47,6 +53,48 @@ async def auth_callback(request: Request):
     entra_object_id = user_info.get("oid") or user_info.get("sub")
     email = user_info.get("email") or user_info.get("preferred_username")
     full_name = user_info.get("name")
+
+    # Create or update local user
+    user = (
+        db.query(User)
+        .filter(User.entra_object_id == entra_object_id)
+        .first()
+    )
+    if user:
+        user.email = email
+        user.full_name = full_name
+        db.commit()
+        db.refresh(user)
+    else:
+        user = User(
+            entra_object_id=entra_object_id,
+            email=email,
+            full_name=full_name,
+            is_active=True,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is inactive",
+        )
+
+    # Store user identity in session
+    request.session["entra_object_id"] = entra_object_id
+    request.session["user"] = {
+        "id": user.id,
+        "entra_object_id": user.entra_object_id,
+        "email": user.email,
+        "full_name": user.full_name,
+    }
+
+    # If pending_oauth_request exists, redirect back to /oauth/authorize with those params
+    pending = request.session.pop("pending_oauth_request", None)
+    if pending:
+        return RedirectResponse(f"/oauth/authorize?{urlencode(pending)}")
 
     app_token = create_access_token(
         subject=str(entra_object_id),
