@@ -23,5 +23,6 @@ class DatabaseUpdate(BaseModel):
 class DatabaseResponse(DatabaseBase):
     id: int
     created_at: datetime
+    last_synced_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)

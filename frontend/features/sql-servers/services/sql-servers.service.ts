@@ -12,6 +12,18 @@ export interface SQLServer {
   created_at: string;
 }
 
+export interface SyncResponse {
+  databases_added: number;
+  databases_updated: number;
+  tables_added: number;
+  tables_updated: number;
+  failed_databases: Array<{
+    database_id: number | null;
+    name: string;
+    error: string;
+  }>;
+}
+
 export async function getSQLServers(): Promise<SQLServer[]> {
   return apiRequest<SQLServer[]>("/sql-servers");
 }
@@ -39,3 +51,8 @@ export async function deleteSQLServer(id: number): Promise<void> {
   });
 }
 
+export async function syncSQLServer(id: number): Promise<SyncResponse> {
+  return apiRequest<SyncResponse>(`/sql-servers/${id}/sync`, {
+    method: "POST",
+  });
+}

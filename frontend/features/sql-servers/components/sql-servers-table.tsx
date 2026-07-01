@@ -5,14 +5,16 @@ import {
   getSQLServers, 
   createSQLServer, 
   updateSQLServer, 
-  deleteSQLServer, 
-  type SQLServer 
+  deleteSQLServer,
+  syncSQLServer,
+  type SQLServer,
+  type SyncResponse,
 } from "../services/sql-servers.service";
 import { SQLServerForm, type SQLServerFormData } from "./sql-server-form";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle, Server, Plus, Edit, Trash2, CheckCircle2 } from "lucide-react";
+import { Loader2, AlertCircle, Server, Plus, Edit, Trash2, CheckCircle2, RefreshCw } from "lucide-react";
 
 export function SQLServersTable() {
   const [servers, setServers] = React.useState<SQLServer[]>([]);
@@ -28,6 +30,9 @@ export function SQLServersTable() {
 
   const [submitting, setSubmitting] = React.useState(false);
   const [notification, setNotification] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Per-row syncing state: maps server id → true while syncing
+  const [syncingIds, setSyncingIds] = React.useState<Record<number, boolean>>({});
 
   const loadData = React.useCallback(async () => {
     try {
@@ -50,7 +55,16 @@ export function SQLServersTable() {
   // Flash notification helper
   const showNotification = (type: "success" | "error", text: string) => {
     setNotification({ type, text });
-    setTimeout(() => setNotification(null), 5000);
+    setTimeout(() => setNotification(null), 6000);
+  };
+
+  const formatSyncResult = (result: SyncResponse) => {
+    const dbPart = `${result.databases_added} added, ${result.databases_updated} updated`;
+    const tblPart = `${result.tables_added} tables added, ${result.tables_updated} updated`;
+    const failurePart = result.failed_databases.length > 0
+      ? ` (${result.failed_databases.length} database(s) failed)`
+      : "";
+    return `Synced — databases: ${dbPart} | ${tblPart}${failurePart}`;
   };
 
   const handleOpenCreate = () => {
@@ -68,6 +82,20 @@ export function SQLServersTable() {
     setIsDeleteOpen(true);
   };
 
+  const handleSyncServer = async (server: SQLServer) => {
+    setSyncingIds((prev) => ({ ...prev, [server.id]: true }));
+    try {
+      const result = await syncSQLServer(server.id);
+      showNotification("success", `"${server.name}" — ${formatSyncResult(result)}`);
+      loadData();
+    } catch (err) {
+      console.error("Sync failed:", err);
+      showNotification("error", `Sync failed for "${server.name}". Check credentials and connectivity.`);
+    } finally {
+      setSyncingIds((prev) => ({ ...prev, [server.id]: false }));
+    }
+  };
+
   const handleFormSubmit = async (formData: SQLServerFormData) => {
     try {
       setSubmitting(true);
@@ -75,13 +103,30 @@ export function SQLServersTable() {
         // Edit Mode
         await updateSQLServer(editingServer.id, formData);
         showNotification("success", `Server "${formData.name}" successfully updated.`);
+        setIsFormOpen(false);
+        loadData();
       } else {
-        // Create Mode
-        await createSQLServer(formData);
-        showNotification("success", `Server "${formData.name}" successfully registered.`);
+        // Create Mode — auto-sync after creation
+        const created = await createSQLServer(formData);
+        setIsFormOpen(false);
+        loadData();
+
+        // Auto-sync: show syncing notification then trigger sync
+        setNotification({ type: "success", text: `Server "${formData.name}" registered. Syncing databases…` });
+        setSyncingIds((prev) => ({ ...prev, [created.id]: true }));
+        try {
+          const result = await syncSQLServer(created.id);
+          showNotification(
+            result.failed_databases.length > 0 ? "error" : "success",
+            `"${formData.name}" — ${formatSyncResult(result)}`
+          );
+          loadData();
+        } catch {
+          showNotification("error", `"${formData.name}" registered, but auto-sync failed. Use "Sync Server" to retry.`);
+        } finally {
+          setSyncingIds((prev) => ({ ...prev, [created.id]: false }));
+        }
       }
-      setIsFormOpen(false);
-      loadData();
     } catch (err) {
       console.error("Error saving server:", err);
       showNotification("error", "Failed to save the server configuration. Please try again.");
@@ -175,57 +220,71 @@ export function SQLServersTable() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {servers.map((server) => (
-                  <tr key={server.id} className="hover:bg-muted/10 transition-colors group">
-                    <td className="px-6 py-4 font-semibold text-foreground">
-                      <div className="flex flex-col">
-                        <span>{server.name}</span>
-                        {server.description && (
-                          <span className="text-[11px] font-normal text-muted-foreground mt-0.5">{server.description}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 font-mono text-xs text-muted-foreground select-all">{server.host}</td>
-                    <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{server.port}</td>
-                    <td className="px-6 py-4 capitalize text-muted-foreground">
-                      {server.authentication_type.replace(/_/g, " ")}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
-                        server.is_active 
-                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" 
-                          : "bg-muted text-muted-foreground border-border"
-                      }`}>
-                        {server.is_active ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-xs text-muted-foreground">
-                      {new Date(server.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5 opacity-80 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                          onClick={() => handleOpenEdit(server)}
-                          aria-label={`Edit ${server.name}`}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          onClick={() => handleOpenDelete(server)}
-                          aria-label={`Delete ${server.name}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {servers.map((server) => {
+                  const isSyncing = !!syncingIds[server.id];
+                  return (
+                    <tr key={server.id} className="hover:bg-muted/10 transition-colors group">
+                      <td className="px-6 py-4 font-semibold text-foreground">
+                        <div className="flex flex-col">
+                          <span>{server.name}</span>
+                          {server.description && (
+                            <span className="text-[11px] font-normal text-muted-foreground mt-0.5">{server.description}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-mono text-xs text-muted-foreground select-all">{server.host}</td>
+                      <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{server.port}</td>
+                      <td className="px-6 py-4 capitalize text-muted-foreground">
+                        {server.authentication_type.replace(/_/g, " ")}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                          server.is_active 
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" 
+                            : "bg-muted text-muted-foreground border-border"
+                        }`}>
+                          {server.is_active ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-xs text-muted-foreground">
+                        {new Date(server.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5 opacity-80 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            onClick={() => handleSyncServer(server)}
+                            disabled={isSyncing}
+                            aria-label={`Sync ${server.name}`}
+                            title="Sync Server"
+                          >
+                            <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            onClick={() => handleOpenEdit(server)}
+                            aria-label={`Edit ${server.name}`}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={() => handleOpenDelete(server)}
+                            aria-label={`Delete ${server.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -242,7 +301,7 @@ export function SQLServersTable() {
             <DialogDescription>
               {editingServer 
                 ? "Modify connection options and credential aliases for this instance." 
-                : "Add details to register a new SQL Server connection with the remote gateway."}
+                : "Add details to register a new SQL Server. Databases and tables will be discovered automatically after registration."}
             </DialogDescription>
           </DialogHeader>
           

@@ -1,4 +1,4 @@
-import { PermissionsTables } from "@/features/permissions/components/permissions-tables";
+import { PermissionManager } from "@/features/permissions/components/permission-manager";
 
 export default function PermissionsPage() {
   return (
@@ -10,8 +10,8 @@ export default function PermissionsPage() {
         </p>
       </div>
 
-      <section aria-label="Permissions List">
-        <PermissionsTables />
+      <section aria-label="Permissions Hierarchy Manager">
+        <PermissionManager />
       </section>
     </div>
   );

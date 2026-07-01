@@ -9,11 +9,15 @@ from app.models.user_table_permission import UserTablePermission
 
 
 def require_admin(current_user: User) -> None:
-    # TODO: Replace with role-based admin check when roles are implemented.
     if not current_user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive users are not allowed",
+        )
+    if not getattr(current_user, "is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
         )
 
 

@@ -8,7 +8,9 @@ from app.schemas.sql_server import (
     SQLServerResponse,
     SQLServerUpdate,
 )
+from app.schemas.sync import SyncResponse
 from app.services.sql_server_service import SQLServerService
+from app.services.sql_server_discovery_service import SQLServerDiscoveryService
 
 router = APIRouter(prefix="/sql-servers", tags=["SQL Servers"])
 
@@ -69,3 +71,22 @@ def delete_sql_server(
     service = SQLServerService(db)
     service.delete_sql_server(sql_server_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/{sql_server_id}/sync",
+    response_model=SyncResponse,
+    summary="Sync databases and tables",
+    description=(
+        "Connects to the SQL Server, discovers all user databases and their "
+        "tables, and stores them in the gateway database. Safe to call "
+        "repeatedly — uses upsert semantics."
+    ),
+)
+def sync_sql_server(
+    sql_server_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    discovery = SQLServerDiscoveryService(db)
+    return discovery.sync_all(sql_server_id)

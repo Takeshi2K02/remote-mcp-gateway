@@ -20,5 +20,6 @@ class DatabaseTableResponse(DatabaseTableCreate):
     id: int
     is_active: bool
     created_at: datetime
+    last_synced_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)

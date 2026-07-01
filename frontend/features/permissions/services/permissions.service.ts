@@ -72,3 +72,16 @@ export async function deleteTablePermission(id: number): Promise<void> {
   });
 }
 
+import { ServerNode, PermissionChange } from "../types/permission-tree.types";
+
+export async function getPermissionTree(userId: number): Promise<ServerNode[]> {
+  return apiRequest<ServerNode[]>(`/users/${userId}/permission-tree`);
+}
+
+export async function savePermissions(userId: number, changes: PermissionChange[]): Promise<void> {
+  return apiRequest<void>(`/users/${userId}/permissions`, {
+    method: "PUT",
+    body: { changes },
+  });
+}
+
