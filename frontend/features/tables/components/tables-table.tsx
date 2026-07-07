@@ -35,7 +35,7 @@ export function TablesTable() {
 
   const [submitting, setSubmitting] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
-  const [syncingTableId, setSyncingTableId] = React.useState<number | null>(null);
+  const [syncingTableId] = React.useState<number | null>(null);
   const [notification, setNotification] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const loadData = React.useCallback(async () => {
@@ -242,7 +242,7 @@ export function TablesTable() {
         <CardContent className="p-0 overflow-x-auto">
           {tables.length === 0 ? (
             <div className="text-center py-12 text-sm text-muted-foreground">
-              No tables discovered yet. Use "Sync Tables" to discover tables from your databases.
+              No tables discovered yet. Use &quot;Sync Tables&quot; to discover tables from your databases.
             </div>
           ) : (
             <table className="w-full text-left border-collapse text-sm">
@@ -390,7 +390,7 @@ export function TablesTable() {
             </DialogTitle>
             <DialogDescription>
               Are you sure you want to delete table mapping{" "}
-              <strong className="text-foreground">"{deletingTable?.schema_name}.{deletingTable?.table_name}"</strong>?
+              <strong className="text-foreground">&quot;{deletingTable?.schema_name}.{deletingTable?.table_name}&quot;</strong>?
               This operation cannot be undone. All user permissions mapped to this table will be deleted.
             </DialogDescription>
           </DialogHeader>

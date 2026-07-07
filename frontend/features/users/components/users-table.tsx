@@ -48,10 +48,6 @@ export function UsersTable() {
   const [submitting, setSubmitting] = React.useState(false);
   const [notification, setNotification] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Edit form state
-  const [editName, setEditName] = React.useState("");
-  const [editEmail, setEditEmail] = React.useState("");
-
   const loadUsers = React.useCallback(async () => {
     try {
       setLoading(true);
@@ -118,8 +114,6 @@ export function UsersTable() {
 
   const handleStartEdit = (user: User) => {
     setEditingUser(user);
-    setEditName(user.full_name || "");
-    setEditEmail(user.email);
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {

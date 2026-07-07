@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { apiRequest } from "@/lib/api/http-client";
 import { Server, Database, Table, Loader2 } from "lucide-react";
 

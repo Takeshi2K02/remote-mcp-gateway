@@ -231,7 +231,7 @@ export function DatabasesTable() {
         <CardContent className="p-0 overflow-x-auto">
           {databases.length === 0 ? (
             <div className="text-center py-12 text-sm text-muted-foreground">
-              No databases discovered yet. Use "Sync Databases" to discover databases from your SQL Servers.
+              No databases discovered yet. Use &quot;Sync Databases&quot; to discover databases from your SQL Servers.
             </div>
           ) : (
             <table className="w-full text-left border-collapse text-sm">
@@ -385,7 +385,7 @@ export function DatabasesTable() {
             </DialogTitle>
             <DialogDescription>
               Are you sure you want to delete database mapping{" "}
-              <strong className="text-foreground">"{deletingDatabase?.name}"</strong>?
+              <strong className="text-foreground">&quot;{deletingDatabase?.name}&quot;</strong>?
               This operation cannot be undone. Active permissions associated with this database will be purged.
             </DialogDescription>
           </DialogHeader>

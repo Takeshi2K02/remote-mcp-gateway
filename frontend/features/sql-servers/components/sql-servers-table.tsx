@@ -325,7 +325,7 @@ export function SQLServersTable() {
             </DialogTitle>
             <DialogDescription>
               Are you sure you want to delete server registry{" "}
-              <strong className="text-foreground">"{deletingServer?.name}"</strong>?
+              <strong className="text-foreground">&quot;{deletingServer?.name}&quot;</strong>?
               This operation is permanent and cannot be undone. Any active permissions for this server will also be deleted.
             </DialogDescription>
           </DialogHeader>

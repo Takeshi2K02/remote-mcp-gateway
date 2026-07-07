@@ -1,25 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { ServerNode, DatabaseNode, TableNode, CheckedState } from "../types/permission-tree.types";
+import { ServerNode, DatabaseNode, CheckedState } from "../types/permission-tree.types";
 import { TriStateCheckbox } from "./tri-state-checkbox";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Server, 
-  Database, 
-  Table2, 
-  ChevronRight, 
-  ChevronDown, 
-  Search, 
-  FolderOpen, 
-  FolderClosed,
-  CheckSquare,
-  Square,
-  Activity,
-  Layers
+import {
+  Server,
+  Database,
+  Table2,
+  ChevronRight,
+  ChevronDown,
+  Search
 } from "lucide-react";
 
 interface PermissionTreeProps {
@@ -210,8 +203,8 @@ export function PermissionTree({ treeData, onTreeChange }: PermissionTreeProps) 
 
   // Summaries Calculations
   const stats = React.useMemo(() => {
-    let totalServers = treeData.length;
-    let checkedServers = treeData.filter((s) => s.checked).length;
+    const totalServers = treeData.length;
+    const checkedServers = treeData.filter((s) => s.checked).length;
 
     let totalDbs = 0;
     let checkedDbs = 0;

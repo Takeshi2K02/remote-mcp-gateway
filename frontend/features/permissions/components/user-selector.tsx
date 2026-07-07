@@ -8,10 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Search, Users, User as UserIcon, Check, Loader2, AlertCircle } from "lucide-react";
+import { Search, Loader2, AlertCircle } from "lucide-react";
 
 interface UserSelectorProps {
-  onSelectUser: (user: User) => void;
+  onSelectUser: (user: User | null) => void;
   selectedUser: User | null;
 }
 
@@ -159,7 +159,7 @@ export function UserSelector({ onSelectUser, selectedUser }: UserSelectorProps) 
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onSelectUser(null as any)}
+              onClick={() => onSelectUser(null)}
               className="text-xs h-8"
             >
               Change User

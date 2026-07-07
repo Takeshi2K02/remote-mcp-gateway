@@ -1,7 +1,7 @@
 "use client";
 
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { FileClock, User, ShieldCheck, Database, Server, RefreshCw } from "lucide-react";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { FileClock, User, ShieldCheck, Database, Server } from "lucide-react";
 
 interface AuditLogPlaceholder {
   id: string;

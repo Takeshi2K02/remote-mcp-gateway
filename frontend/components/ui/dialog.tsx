@@ -37,16 +37,16 @@ export function Dialog({ open: controlledOpen, onOpenChange, children }: DialogP
 export function DialogTrigger({ children, asChild, ...props }: { children: React.ReactNode; asChild?: boolean }) {
   const context = React.useContext(DialogContext);
   
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = () => {
     context.setOpen(true);
   };
 
   if (asChild && React.isValidElement(children)) {
-    return React.cloneElement(children as React.ReactElement<any>, {
+    return React.cloneElement(children as React.ReactElement<{ onClick?: (e: React.MouseEvent) => void }>, {
       onClick: (e: React.MouseEvent) => {
         const childProps = children.props as { onClick?: (e: React.MouseEvent) => void };
         childProps.onClick?.(e);
-        handleClick(e);
+        handleClick();
       }
     });
   }

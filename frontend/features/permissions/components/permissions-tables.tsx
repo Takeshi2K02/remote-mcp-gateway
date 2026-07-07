@@ -457,7 +457,7 @@ export function PermissionsTables() {
             <DialogDescription>
               Are you sure you want to revoke access permission from{" "}
               <strong className="text-foreground">User #{deletingPerm?.user_id}</strong> on{" "}
-              <strong className="text-foreground">"{deletingPerm?.target_name}"</strong>?
+              <strong className="text-foreground">&quot;{deletingPerm?.target_name}&quot;</strong>?
               This operation is permanent.
             </DialogDescription>
           </DialogHeader>

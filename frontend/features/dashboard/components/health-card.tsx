@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { apiRequest } from "@/lib/api/http-client";
-import { Activity, Database, Server, RefreshCw } from "lucide-react";
+import { Database, Server, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type HealthStatus = "checking" | "healthy" | "unhealthy";
