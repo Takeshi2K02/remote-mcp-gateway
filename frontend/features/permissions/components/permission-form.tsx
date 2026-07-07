@@ -35,11 +35,11 @@ export function PermissionForm({
   onCancel,
   isLoading,
 }: PermissionFormProps) {
-  const getDefaultTargetId = () => {
+  const getDefaultTargetId = React.useCallback(() => {
     if (type === "server") return servers[0]?.id || 0;
     if (type === "database") return databases[0]?.id || 0;
     return tables[0]?.id || 0;
-  };
+  }, [type, servers, databases, tables]);
 
   const [formData, setFormData] = React.useState<PermissionFormData>({
     user_id: 1, // Default User ID to 1
@@ -54,7 +54,7 @@ export function PermissionForm({
       ...prev,
       target_id: getDefaultTargetId(),
     }));
-  }, [servers, databases, tables, type]);
+  }, [getDefaultTargetId]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;

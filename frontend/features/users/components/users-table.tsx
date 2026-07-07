@@ -182,10 +182,6 @@ export function UsersTable() {
 
   const totalPages = Math.ceil(filteredUsers.length / itemsPerPage) || 1;
 
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [search]);
-
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
@@ -226,7 +222,10 @@ export function UsersTable() {
             <Input
               placeholder="Search by name or email..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setCurrentPage(1);
+              }}
               className="pl-9 text-xs"
             />
           </div>
