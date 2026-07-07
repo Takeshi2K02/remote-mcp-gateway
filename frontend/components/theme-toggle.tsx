@@ -15,6 +15,9 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
+  // Hydration-safe mount flag: next-themes' `theme` is undefined on the server,
+  // so this only ever fires once on mount, not in response to state/props.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
 
   return (
