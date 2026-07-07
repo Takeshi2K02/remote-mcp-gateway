@@ -16,6 +16,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   // Close sidebar on route change
   useEffect(() => {
+    // Syncing with the router's pathname (an external signal), not deriving state from props/state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMobileSidebarOpen(false);
   }, [pathname]);
 

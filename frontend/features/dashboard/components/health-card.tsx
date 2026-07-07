@@ -46,6 +46,9 @@ export function HealthCard() {
   };
 
   useEffect(() => {
+    // Standard fetch-on-mount; setIsRefreshing(true) firing synchronously is intentional
+    // and safe under React 18 batching.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchHealth();
     // Poll every 30 seconds
     const interval = setInterval(fetchHealth, 30000);

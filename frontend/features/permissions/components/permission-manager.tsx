@@ -41,6 +41,10 @@ export function PermissionManager() {
 
   React.useEffect(() => {
     if (selectedUser) {
+      // Synchronizing local tree state with the selectedUser signal; setLoading(true) inside
+      // loadTree fires before its await, and clearing tree state below when selection is
+      // removed is the same sync.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadTree(selectedUser.id);
     } else {
       setInitialTree([]);

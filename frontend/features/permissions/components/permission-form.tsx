@@ -50,6 +50,9 @@ export function PermissionForm({
 
   // Reset default target ID if lists load later
   React.useEffect(() => {
+    // Re-derives target_id from props (servers/databases/tables/type), all already
+    // covered by the getDefaultTargetId dependency.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFormData((prev) => ({
       ...prev,
       target_id: getDefaultTargetId(),

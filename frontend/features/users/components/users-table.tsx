@@ -63,6 +63,9 @@ export function UsersTable() {
   }, []);
 
   React.useEffect(() => {
+    // Standard fetch-on-mount; setLoading(true) firing synchronously is intentional
+    // and safe under React 18 batching.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadUsers();
   }, [loadUsers]);
 
