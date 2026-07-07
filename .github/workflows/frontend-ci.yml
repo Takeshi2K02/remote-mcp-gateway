@@ -72,3 +72,88 @@ jobs:
         run: npm run build
         env:
           NEXT_PUBLIC_API_BASE_URL: "https://ci-placeholder.invalid"
+
+  # Builds the frontend image and pushes it to Azure Container Registry.
+  # Only runs on a push to main (never on PRs) - same as
+  # build-and-push-backend.
+  build-and-push-frontend:
+    name: Build & push frontend image
+    needs: frontend-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      REGISTRY: rmgwregistry.azurecr.io
+      IMAGE_NAME: mcp-gateway-frontend
+      # NEXT_PUBLIC_API_BASE_URL is inlined into the client JS bundle at
+      # build time (see frontend/Dockerfile) - it is baked into the image,
+      # not read at container startup. If this URL ever changes, the image
+      # must be rebuilt; a Container App env var change alone would have
+      # no effect on already-built JS.
+      NEXT_PUBLIC_API_BASE_URL: "https://mcp-gateway-backend.gentleforest-38e3a42b.southeastasia.azurecontainerapps.io"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to ACR
+        run: az acr login --name ${{ env.REGISTRY }}
+
+      - name: Build and push image
+        working-directory: frontend
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          docker build \
+            --build-arg NEXT_PUBLIC_API_BASE_URL="${{ env.NEXT_PUBLIC_API_BASE_URL }}" \
+            -t "$IMAGE:$SHORT_SHA" -t "$IMAGE:latest" .
+          docker push "$IMAGE:$SHORT_SHA"
+          docker push "$IMAGE:latest"
+
+  # Points the existing Container App at the image just pushed above. Same
+  # pattern as deploy-backend: Single revision mode means the new revision
+  # takes 100% traffic as soon as it's healthy, no separate traffic-split
+  # step. Only --image is passed, so existing env vars/secrets/scale rules
+  # are left untouched.
+  deploy-frontend:
+    name: Deploy frontend to Container Apps
+    needs: build-and-push-frontend
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      REGISTRY: rmgwregistry.azurecr.io
+      IMAGE_NAME: mcp-gateway-frontend
+      CONTAINER_APP_NAME: mcp-gateway-frontend
+      RESOURCE_GROUP: rg-remote-mcp-gateway-dev
+
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy new image to Container App
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$SHORT_SHA
