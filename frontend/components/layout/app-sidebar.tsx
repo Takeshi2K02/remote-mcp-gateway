@@ -10,6 +10,7 @@ import {
   Users,
   Shield,
   FileClock,
+  Settings,
   LogOut,
   Terminal,
   X
@@ -32,6 +33,7 @@ export function AppSidebar({ className, onClose }: AppSidebarProps) {
     { href: "/users", label: "Users", icon: Users },
     { href: "/permissions", label: "Permissions", icon: Shield },
     { href: "/audit-logs", label: "Audit Logs", icon: FileClock },
+    { href: "/settings", label: "Settings", icon: Settings },
   ];
 
   // Get initials for user avatar
@@ -54,7 +56,7 @@ export function AppSidebar({ className, onClose }: AppSidebarProps) {
             <Terminal className="h-5 w-5" />
           </div>
           <div>
-            <span className="font-bold tracking-tight text-foreground bg-gradient-to-r from-primary to-primary/80 bg-clip-text">
+            <span className="font-bold tracking-tight bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
               MCP Gateway
             </span>
             <span className="block text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">

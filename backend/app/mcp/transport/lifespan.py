@@ -18,6 +18,7 @@ async def mcp_lifespan(app: FastAPI) -> AsyncIterator[None]:
         config_path = os.path.join(os.getcwd(), "alembic.ini")
         if os.path.exists(config_path):
             alembic_cfg = Config(config_path)
+            alembic_cfg.attributes["configure_logger"] = False
             command.upgrade(alembic_cfg, "head")
             logger.info("Database migrations completed successfully.")
         else:
