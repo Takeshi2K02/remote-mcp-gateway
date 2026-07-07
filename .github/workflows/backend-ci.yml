@@ -1,0 +1,106 @@
+# CI for the backend (FastAPI) service only.
+#
+# "paths" below means this workflow is only triggered when a commit touches
+# something under backend/ (or this file itself). A frontend-only change
+# won't start this workflow at all - it simply won't appear in the checks
+# list for that commit/PR.
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  # A "job" is a set of steps that run together on one fresh virtual machine
+  # ("runner"). Each job in a workflow gets its own runner and runs in
+  # parallel with other jobs by default, unless you say otherwise with
+  # `needs:` (which we'll use in Step 2 for the build/deploy jobs that must
+  # come after this one).
+  backend-test:
+    name: Backend lint & test
+    runs-on: ubuntu-latest
+
+    # Every `run:` step in this job executes with backend/ as the current
+    # directory, so we can write `pip install -r requirements.txt` instead of
+    # `pip install -r backend/requirements.txt` in every single step.
+    defaults:
+      run:
+        working-directory: backend
+
+    # app/core/config.py defines a pydantic Settings object with several
+    # *required* fields (no default value) - things like ENTRA_TENANT_ID and
+    # DB_HOST. app/main.py builds this Settings object as soon as it's
+    # imported, and pytest imports app.main indirectly through the test
+    # files. So even though the test suite mocks the database with an
+    # in-memory SQLite engine and never talks to Entra ID or Key Vault, the
+    # import still fails without *some* value for each required field.
+    #
+    # These are placeholder strings, not real credentials - nothing here can
+    # authenticate to anything real, so they don't need to be GitHub
+    # Secrets. Real secrets (used later in the deploy jobs) will be handled
+    # differently.
+    env:
+      ENTRA_TENANT_ID: ci-placeholder
+      ENTRA_CLIENT_ID: ci-placeholder
+      ENTRA_CLIENT_SECRET: ci-placeholder
+      DB_HOST: ci-placeholder
+      DB_NAME: ci-placeholder
+      DB_USERNAME: ci-placeholder
+      DB_PASSWORD: ci-placeholder
+      DB_DRIVER: "ODBC Driver 18 for SQL Server"
+      AZURE_KEY_VAULT_URL: "https://ci-placeholder.vault.azure.net/"
+      SECRET_KEY: ci-placeholder-secret
+      APP_JWT_SECRET_KEY: ci-placeholder-jwt-secret
+
+    steps:
+      # actions/checkout is the standard first step in almost every job: it
+      # clones your repo onto the runner so later steps have something to
+      # work with. Without it, the runner is just an empty machine.
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Installs Python on the runner. `cache: "pip"` caches downloaded pip
+      # packages between runs (keyed on the requirements files below), so
+      # `pip install` is fast on repeat runs instead of re-downloading
+      # everything from PyPI each time.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      # app/db/database.py builds a SQLAlchemy engine with the
+      # "mssql+pyodbc://" driver at import time (not lazily, on first
+      # connection). That means importing app.main - which every test does -
+      # requires the `pyodbc` package to import successfully, which in turn
+      # requires unixODBC's shared library to be present on the system.
+      # We're never connecting to a real SQL Server here (tests override the
+      # DB with SQLite), so we only need the base unixodbc runtime library,
+      # not the Microsoft ODBC driver itself or the -dev headers the
+      # Dockerfile installs.
+      - name: Install unixODBC runtime (required for pyodbc import)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends unixodbc
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      # ruff is configured via backend/ruff.toml. It currently passes clean
+      # (0 issues) - I fixed 16 pre-existing unused-import warnings while
+      # setting this up, and added a per-file-ignore for the model __init__
+      # files that intentionally re-export classes for SQLAlchemy/Alembic.
+      - name: Lint with ruff
+        run: ruff check .
+
+      - name: Run tests
+        run: pytest

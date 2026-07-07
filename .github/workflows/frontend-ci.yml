@@ -1,0 +1,74 @@
+# CI for the frontend (Next.js) service only.
+#
+# Same "paths" idea as backend-ci.yml, mirrored for frontend/: this workflow
+# only triggers on commits touching frontend/ (or this file), so a
+# backend-only change never runs it.
+name: Frontend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+
+jobs:
+  frontend-test:
+    name: Frontend lint & build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # actions/setup-node's built-in cache option caches npm's download
+      # cache (~/.npm) keyed on package-lock.json, so `npm ci` is fast on
+      # repeat runs instead of re-downloading every package from the
+      # registry each time.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci` (not `npm install`) installs exactly what's in
+      # package-lock.json and never modifies it - the standard choice for
+      # CI, where you want a reproducible install rather than a resolver
+      # possibly picking up newer versions than what's committed.
+      - name: Install dependencies
+        run: npm ci
+
+      # There is no test framework in this project yet (no Jest/Vitest/etc.
+      # in package.json) - lint + a production build are the only
+      # verification available today. This currently fails: the app has 27
+      # pre-existing ESLint errors (unrelated to this CI setup) across
+      # @typescript-eslint/no-unused-vars, react/no-unescaped-entities,
+      # react-hooks/set-state-in-effect, and a few others. Per your call,
+      # we're wiring this in as a real blocking gate now rather than hiding
+      # it, so the first run on this file is expected to go red until those
+      # are fixed in a follow-up.
+      - name: Lint
+        run: npm run lint
+
+      # next build fails immediately if NEXT_PUBLIC_API_BASE_URL isn't set
+      # (no fallback - lib/config/env.ts throws), because it's a
+      # NEXT_PUBLIC_* variable that gets baked into the client JS bundle at
+      # build time. This build is only a correctness check ("does the app
+      # still compile") - it isn't the artifact that gets deployed, so the
+      # placeholder value below never needs to be a real backend URL. The
+      # actual production value gets passed as a Docker build-arg in the
+      # build-and-push-frontend job we'll add in Step 2.
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: "https://ci-placeholder.invalid"

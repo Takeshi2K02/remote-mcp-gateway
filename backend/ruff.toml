@@ -1,0 +1,8 @@
+target-version = "py312"
+
+[lint]
+# __init__.py files in this repo re-export model classes (e.g. app/models/__init__.py)
+# so that SQLAlchemy/Alembic can discover them via `from app.models import User`.
+# Those imports are intentionally "unused" within the file itself.
+[lint.per-file-ignores]
+"__init__.py" = ["F401"]
