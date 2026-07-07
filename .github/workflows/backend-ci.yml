@@ -104,3 +104,96 @@ jobs:
 
       - name: Run tests
         run: pytest
+
+  # Builds the backend image and pushes it to Azure Container Registry.
+  # Only runs on a push to main (never on PRs) - see the `if:` below - so
+  # that opening/updating a PR never builds or pushes an image for code
+  # that isn't merged yet.
+  build-and-push-backend:
+    name: Build & push backend image
+    needs: backend-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    # Required for azure/login@v2 to request a GitHub OIDC token at all.
+    # Without this, the job has no permission to mint the token that gets
+    # exchanged for a short-lived Azure access token - there are no
+    # passwords or secrets involved beyond the three IDs below.
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      REGISTRY: rmgwregistry.azurecr.io
+      IMAGE_NAME: mcp-gateway-backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Exchanges the GitHub OIDC token for a short-lived Azure access
+      # token, validated against the federated credential's subject
+      # (repo:Takeshi2K02/remote-mcp-gateway:ref:refs/heads/main). No
+      # password or client secret is stored anywhere.
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Uses the Azure session above to fetch a short-lived ACR access
+      # token and configure Docker's credential helper - no separate ACR
+      # username/password secret is needed.
+      - name: Log in to ACR
+        run: az acr login --name ${{ env.REGISTRY }}
+
+      - name: Build and push image
+        working-directory: backend
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          docker build -t "$IMAGE:$SHORT_SHA" -t "$IMAGE:latest" .
+          docker push "$IMAGE:$SHORT_SHA"
+          docker push "$IMAGE:latest"
+
+  # Points the existing Container App at the image just pushed above. This
+  # app runs in Single revision mode, so `az containerapp update --image`
+  # creates a new revision and cuts 100% of traffic over to it as soon as
+  # it passes its startup probe - there's no separate traffic-split step
+  # in this mode. Deliberately deploys the SHA tag, not `latest`: the SHA
+  # is a fixed, auditable pointer, so a bad deploy can always be rolled
+  # back with `az containerapp update --image ...:<previous-sha>` even if
+  # `latest` has since moved on. Only `--image` is passed, so existing env
+  # vars, secrets, scale rules, and resource limits are left untouched.
+  deploy-backend:
+    name: Deploy backend to Container Apps
+    needs: build-and-push-backend
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      REGISTRY: rmgwregistry.azurecr.io
+      IMAGE_NAME: mcp-gateway-backend
+      CONTAINER_APP_NAME: mcp-gateway-backend
+      RESOURCE_GROUP: rg-remote-mcp-gateway-dev
+
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy new image to Container App
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$SHORT_SHA
