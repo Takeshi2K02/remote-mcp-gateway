@@ -52,9 +52,14 @@ export function PermissionTree({ treeData, onTreeChange }: PermissionTreeProps) 
   const [expandedServers, setExpandedServers] = React.useState<Set<number>>(new Set());
   const [expandedDbs, setExpandedDbs] = React.useState<Set<number>>(new Set());
 
-  // Initialize with first server expanded if exists
+  // Auto-expand the first server exactly once per mount. Using expandedServers.size
+  // as the guard (instead of a ref) meant any later treeData reload - e.g. after
+  // Save, which refetches to reset the baseline - would silently re-expand the
+  // first server even if the user had just clicked "Collapse All".
+  const hasAutoExpandedRef = React.useRef(false);
   React.useEffect(() => {
-    if (treeData.length > 0 && expandedServers.size === 0) {
+    if (!hasAutoExpandedRef.current && treeData.length > 0) {
+      hasAutoExpandedRef.current = true;
       setExpandedServers(new Set([treeData[0].server_id]));
     }
   }, [treeData]);
