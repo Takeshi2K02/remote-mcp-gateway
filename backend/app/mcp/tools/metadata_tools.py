@@ -1,6 +1,5 @@
 from typing import Any
 from mcp.server.fastmcp import FastMCP
-from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.mcp.context import get_current_context
 from app.models.database import Database

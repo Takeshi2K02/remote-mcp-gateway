@@ -10,7 +10,7 @@ from app.auth.dependencies import get_current_user
 from app.models.user import User
 from app.models.oauth_client import OAuthClient
 from app.services.oauth_client_service import OAuthClientService
-from app.schemas.oauth_client import OAuthClientCreate, OAuthClientUpdate
+from app.schemas.oauth_client import OAuthClientCreate
 
 # Setup SQLite in-memory database for testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"

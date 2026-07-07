@@ -1,4 +1,3 @@
-import inspect
 import pytest
 from app.mcp.transport.http import mcp_server
 from app.mcp.context import (

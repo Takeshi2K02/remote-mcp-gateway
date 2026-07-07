@@ -2,7 +2,6 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.repositories.permission_tree_repository import PermissionTreeRepository
 from app.schemas.permission_tree import PermissionChange, ServerNode
-from app.models.sql_server import SQLServer
 from app.models.database import Database
 from app.models.database_table import DatabaseTable
 from app.models.user_sql_server_permission import UserSQLServerPermission

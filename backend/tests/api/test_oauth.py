@@ -7,7 +7,6 @@ from sqlalchemy.pool import StaticPool
 
 import app.db.database
 import app.auth.middleware
-from app.auth.jwt_service import create_access_token
 from app.core.config import get_settings
 from app.db.database import Base, get_db
 from app.main import app as fastapi_app
