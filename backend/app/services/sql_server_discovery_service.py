@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
+from app.core.key_vault import SecretResolutionError
 from app.mcp.connection_factory import SQLConnectionFactory
 from app.models.database import Database
 from app.models.sql_server import SQLServer
@@ -24,6 +25,25 @@ logger = logging.getLogger(__name__)
 
 # System databases to exclude from discovery
 _SYSTEM_DATABASES = {"master", "model", "msdb", "tempdb"}
+
+
+def _describe_connection_error(server_name: str, exc: Exception) -> str:
+    """Translate a raw SQLAlchemy/pyodbc error into an actionable message."""
+    text_ = str(exc)
+    if "Login failed" in text_ or "28000" in text_:
+        return (
+            f"SQL authentication failed for '{server_name}'. "
+            "Verify the username and password are correct."
+        )
+    if "timeout" in text_.lower() or "HYT00" in text_:
+        return (
+            f"Connection timeout while reaching '{server_name}'. "
+            "Check firewall rules and network connectivity."
+        )
+    return (
+        f"Could not connect to SQL Server '{server_name}'. "
+        f"Verify host, port, and credentials. Details: {text_.splitlines()[0]}"
+    )
 
 
 class SQLServerDiscoveryService:
@@ -171,6 +191,16 @@ class SQLServerDiscoveryService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(exc),
             ) from exc
+        except SecretResolutionError as exc:
+            logger.error(
+                "Key Vault secret resolution failed for SQL Server %d: %s",
+                sql_server.id,
+                exc,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Key Vault secret resolution failed: {exc}",
+            ) from exc
 
         try:
             with engine.connect() as conn:
@@ -187,10 +217,7 @@ class SQLServerDiscoveryService:
             )
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=(
-                    f"Could not connect to SQL Server '{sql_server.name}' "
-                    "to discover databases. Verify host, port, and credentials."
-                ),
+                detail=_describe_connection_error(sql_server.name, exc),
             ) from exc
         finally:
             engine.dispose()
@@ -241,6 +268,14 @@ class SQLServerDiscoveryService:
             engine = self.factory.create_engine_for_database(sql_server, database)
         except ValueError as exc:
             raise RuntimeError(str(exc)) from exc
+        except SecretResolutionError as exc:
+            logger.error(
+                "Key Vault secret resolution failed for database '%s' (id=%d): %s",
+                database.name,
+                database.id,
+                exc,
+            )
+            raise RuntimeError(f"Key Vault secret resolution failed: {exc}") from exc
 
         try:
             with engine.connect() as conn:
@@ -259,7 +294,7 @@ class SQLServerDiscoveryService:
                 exc,
             )
             raise RuntimeError(
-                f"Could not connect to database '{database.name}': {exc}"
+                _describe_connection_error(database.name, exc)
             ) from exc
         finally:
             engine.dispose()
