@@ -23,6 +23,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, Key, Database, Server, Plus, Trash2, CheckCircle2 } from "lucide-react";
+import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 
 export function PermissionsTables() {
   const [serverPerms, setServerPerms] = React.useState<SQLServerPermission[]>([]);
@@ -282,7 +283,7 @@ export function PermissionsTables() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-80 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                          className="h-8 w-8 text-destructive/80 hover:text-destructive hover:bg-destructive/10 opacity-80 md:opacity-0 md:group-hover:opacity-100 transition-all"
                           onClick={() => handleOpenDelete(perm.id, perm.user_id, targetName, "server")}
                           aria-label={`Revoke User ${perm.user_id} from ${targetName}`}
                         >
@@ -347,7 +348,7 @@ export function PermissionsTables() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-80 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                          className="h-8 w-8 text-destructive/80 hover:text-destructive hover:bg-destructive/10 opacity-80 md:opacity-0 md:group-hover:opacity-100 transition-all"
                           onClick={() => handleOpenDelete(perm.id, perm.user_id, targetName, "database")}
                           aria-label={`Revoke User ${perm.user_id} from ${targetName}`}
                         >
@@ -412,7 +413,7 @@ export function PermissionsTables() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-80 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                          className="h-8 w-8 text-destructive/80 hover:text-destructive hover:bg-destructive/10 opacity-80 md:opacity-0 md:group-hover:opacity-100 transition-all"
                           onClick={() => handleOpenDelete(perm.id, perm.user_id, targetName, "table")}
                           aria-label={`Revoke User ${perm.user_id} from ${targetName}`}
                         >
@@ -450,30 +451,24 @@ export function PermissionsTables() {
       </Dialog>
 
       {/* REVOKE (DELETE) CONFIRMATION DIALOG */}
-      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-destructive flex items-center gap-2">
-              <AlertCircle className="h-5 w-5" />
-              Confirm Revocation
-            </DialogTitle>
-            <DialogDescription>
-              Are you sure you want to revoke access permission from{" "}
-              <strong className="text-foreground">User #{deletingPerm?.user_id}</strong> on{" "}
-              <strong className="text-foreground">&quot;{deletingPerm?.target_name}&quot;</strong>?
-              This operation is permanent.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-3 mt-4">
-            <Button variant="outline" onClick={() => setIsDeleteOpen(false)} disabled={submitting}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={submitting}>
-              {submitting ? "Revoking..." : "Revoke Access"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ConfirmationModal
+        isOpen={isDeleteOpen}
+        onClose={() => setIsDeleteOpen(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Confirm Revocation"
+        message={
+          <>
+            Are you sure you want to revoke access permission from{" "}
+            <strong className="text-foreground">User #{deletingPerm?.user_id}</strong> on{" "}
+            <strong className="text-foreground">&quot;{deletingPerm?.target_name}&quot;</strong>?
+            This operation is permanent.
+          </>
+        }
+        confirmLabel={submitting ? "Revoking..." : "Revoke Access"}
+        cancelLabel="Cancel"
+        variant="destructive"
+        isLoading={submitting}
+      />
     </div>
   );
 }

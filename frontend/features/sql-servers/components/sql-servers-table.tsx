@@ -15,6 +15,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, Server, Plus, Edit, Trash2, CheckCircle2, RefreshCw } from "lucide-react";
+import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 
 export function SQLServersTable() {
   const [servers, setServers] = React.useState<SQLServer[]>([]);
@@ -277,7 +278,7 @@ export function SQLServersTable() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            className="h-8 w-8 text-destructive/80 hover:text-destructive hover:bg-destructive/10"
                             onClick={() => handleOpenDelete(server)}
                             aria-label={`Delete ${server.name}`}
                           >
@@ -319,29 +320,23 @@ export function SQLServersTable() {
       </Dialog>
 
       {/* DELETE CONFIRMATION DIALOG */}
-      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-destructive flex items-center gap-2">
-              <AlertCircle className="h-5 w-5" />
-              Confirm Deletion
-            </DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete server registry{" "}
-              <strong className="text-foreground">&quot;{deletingServer?.name}&quot;</strong>?
-              This operation is permanent and cannot be undone. Any active permissions for this server will also be deleted.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-3 mt-4">
-            <Button variant="outline" onClick={() => setIsDeleteOpen(false)} disabled={submitting}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={submitting}>
-              {submitting ? "Deleting..." : "Delete Server"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ConfirmationModal
+        isOpen={isDeleteOpen}
+        onClose={() => setIsDeleteOpen(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Confirm Deletion"
+        message={
+          <>
+            Are you sure you want to delete server registry{" "}
+            <strong className="text-foreground">&quot;{deletingServer?.name}&quot;</strong>?
+            This operation is permanent and cannot be undone. Any active permissions for this server will also be deleted.
+          </>
+        }
+        confirmLabel={submitting ? "Deleting..." : "Delete Server"}
+        cancelLabel="Cancel"
+        variant="destructive"
+        isLoading={submitting}
+      />
     </div>
   );
 }
