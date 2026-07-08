@@ -14,6 +14,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, TableProperties, Edit, Trash2, CheckCircle2, RefreshCw } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 
 export function TablesTable() {
   const [tables, setTables] = React.useState<DatabaseTable[]>([]);
@@ -279,13 +281,9 @@ export function TablesTable() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
-                          tbl.is_active 
-                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" 
-                            : "bg-muted text-muted-foreground border-border"
-                        }`}>
+                        <Badge variant={tbl.is_active ? "success" : "secondary"}>
                           {tbl.is_active ? "Active" : "Inactive"}
-                        </span>
+                        </Badge>
                       </td>
                       <td className="px-6 py-4 text-xs text-muted-foreground">
                         {tbl.last_synced_at
@@ -308,7 +306,7 @@ export function TablesTable() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            className="h-8 w-8 text-destructive/80 hover:text-destructive hover:bg-destructive/10"
                             onClick={() => handleOpenDelete(tbl)}
                             aria-label={`Delete ${tbl.schema_name}.${tbl.table_name}`}
                           >
@@ -384,29 +382,23 @@ export function TablesTable() {
       </Dialog>
 
       {/* DELETE CONFIRMATION DIALOG */}
-      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-destructive flex items-center gap-2">
-              <AlertCircle className="h-5 w-5" />
-              Confirm Deletion
-            </DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete table mapping{" "}
-              <strong className="text-foreground">&quot;{deletingTable?.schema_name}.{deletingTable?.table_name}&quot;</strong>?
-              This operation cannot be undone. All user permissions mapped to this table will be deleted.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-3 mt-4">
-            <Button variant="outline" onClick={() => setIsDeleteOpen(false)} disabled={submitting}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={submitting}>
-              {submitting ? "Deleting..." : "Delete Table"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ConfirmationModal
+        isOpen={isDeleteOpen}
+        onClose={() => setIsDeleteOpen(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Confirm Deletion"
+        message={
+          <>
+            Are you sure you want to delete table mapping{" "}
+            <strong className="text-foreground">&quot;{deletingTable?.schema_name}.{deletingTable?.table_name}&quot;</strong>?
+            This operation cannot be undone. All user permissions mapped to this table will be deleted.
+          </>
+        }
+        confirmLabel={submitting ? "Deleting..." : "Delete Table"}
+        cancelLabel="Cancel"
+        variant="destructive"
+        isLoading={submitting}
+      />
     </div>
   );
 }

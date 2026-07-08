@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { 
   Search, 
   ChevronUp, 
@@ -47,6 +48,7 @@ export function UsersTable() {
   const [editingUser, setEditingUser] = React.useState<User | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [notification, setNotification] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [confirmAction, setConfirmAction] = React.useState<{ type: "status" | "admin"; user: User } | null>(null);
 
   const loadUsers = React.useCallback(async () => {
     try {
@@ -75,41 +77,42 @@ export function UsersTable() {
   };
 
   // Actions
-  const handleToggleStatus = async (user: User) => {
-    try {
-      setSubmitting(true);
-      const nextActive = !user.is_active;
-      const updated = await updateUser(user.id, { is_active: nextActive });
-      
-      setUsers((prev) => prev.map((u) => (u.id === user.id ? updated : u)));
-      showNotification(
-        "success",
-        `User account for ${user.email} is now ${nextActive ? "Active" : "Inactive"}.`
-      );
-    } catch (err) {
-      console.error(err);
-      showNotification("error", "Failed to update user status.");
-    } finally {
-      setSubmitting(false);
-    }
+  const handleToggleStatus = (user: User) => {
+    setConfirmAction({ type: "status", user });
   };
 
-  const handleToggleAdmin = async (user: User) => {
+  const handleToggleAdmin = (user: User) => {
+    setConfirmAction({ type: "admin", user });
+  };
+
+  const handleConfirmToggleAction = async () => {
+    if (!confirmAction) return;
+    const { type, user } = confirmAction;
     try {
       setSubmitting(true);
-      const nextAdmin = !user.is_admin;
-      const updated = await updateUser(user.id, { is_admin: nextAdmin });
-
-      setUsers((prev) => prev.map((u) => (u.id === user.id ? updated : u)));
-      showNotification(
-        "success",
-        nextAdmin 
-          ? `Promoted ${user.email} to Administrator.` 
-          : `Removed Administrator role from ${user.email}.`
-      );
+      if (type === "status") {
+        const nextActive = !user.is_active;
+        const updated = await updateUser(user.id, { is_active: nextActive });
+        setUsers((prev) => prev.map((u) => (u.id === user.id ? updated : u)));
+        showNotification(
+          "success",
+          `User account for ${user.email} is now ${nextActive ? "Active" : "Inactive"}.`
+        );
+      } else {
+        const nextAdmin = !user.is_admin;
+        const updated = await updateUser(user.id, { is_admin: nextAdmin });
+        setUsers((prev) => prev.map((u) => (u.id === user.id ? updated : u)));
+        showNotification(
+          "success",
+          nextAdmin 
+            ? `Promoted ${user.email} to Administrator.` 
+            : `Removed Administrator role from ${user.email}.`
+        );
+      }
+      setConfirmAction(null);
     } catch (err) {
       console.error(err);
-      showNotification("error", "Failed to update administrator role.");
+      showNotification("error", `Failed to update user ${type === "status" ? "status" : "administrator role"}.`);
     } finally {
       setSubmitting(false);
     }
@@ -285,7 +288,7 @@ export function UsersTable() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <Badge variant={user.is_active ? "success" : "destructive"}>
+                        <Badge variant={user.is_active ? "success" : "secondary"}>
                           {user.is_active ? "Active" : "Inactive"}
                         </Badge>
                       </td>
@@ -438,7 +441,7 @@ export function UsersTable() {
                     <span>Security Flags</span>
                   </div>
                   <div className="flex gap-1.5 pt-0.5">
-                    <Badge variant={viewingUser.is_active ? "success" : "destructive"}>
+                    <Badge variant={viewingUser.is_active ? "success" : "secondary"}>
                       {viewingUser.is_active ? "Active" : "Inactive"}
                     </Badge>
                     <Badge variant={viewingUser.is_admin ? "default" : "secondary"}>
@@ -521,6 +524,68 @@ export function UsersTable() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* SECURITY POLICIES ACTION CONFIRMATION MODAL */}
+      {confirmAction && (
+        <ConfirmationModal
+          isOpen={!!confirmAction}
+          onClose={() => setConfirmAction(null)}
+          onConfirm={handleConfirmToggleAction}
+          title={
+            confirmAction.type === "status"
+              ? confirmAction.user.is_active
+                ? "Deactivate User Account"
+                : "Activate User Account"
+              : confirmAction.user.is_admin
+              ? "Revoke Administrator Role"
+              : "Grant Administrator Role"
+          }
+          message={
+            confirmAction.type === "status" ? (
+              confirmAction.user.is_active ? (
+                <>
+                  Are you sure you want to deactivate the account for{" "}
+                  <strong>{confirmAction.user.email}</strong>? This user will lose all API authorization and cannot request database session tokens.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to reactivate the account for{" "}
+                  <strong>{confirmAction.user.email}</strong>? This user will regain access to request database session tokens.
+                </>
+              )
+            ) : confirmAction.user.is_admin ? (
+              <>
+                Are you sure you want to revoke Administrator privileges from{" "}
+                <strong>{confirmAction.user.email}</strong>? They will no longer be able to manage registered SQL Servers, databases, tables, or grant permissions.
+              </>
+            ) : (
+              <>
+                Are you sure you want to grant Administrator privileges to{" "}
+                <strong>{confirmAction.user.email}</strong>? This user will be authorized to register new SQL Server endpoints, databases, tables, and manage security policy grants.
+              </>
+            )
+          }
+          confirmLabel={
+            confirmAction.type === "status"
+              ? confirmAction.user.is_active
+                ? "Deactivate Account"
+                : "Activate Account"
+              : confirmAction.user.is_admin
+              ? "Revoke Role"
+              : "Grant Role"
+          }
+          variant={
+            confirmAction.type === "status"
+              ? confirmAction.user.is_active
+                ? "destructive"
+                : "success"
+              : confirmAction.user.is_admin
+              ? "warning"
+              : "default"
+          }
+          isLoading={submitting}
+        />
+      )}
     </div>
   );
 }

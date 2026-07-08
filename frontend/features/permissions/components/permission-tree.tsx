@@ -310,17 +310,17 @@ export function PermissionTree({ treeData, onTreeChange }: PermissionTreeProps) 
       </div>
 
       {/* Resource Count Summary Badge */}
-      <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground p-3 border rounded-lg bg-card shadow-sm border-border/80">
+      <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 text-xs font-medium text-muted-foreground p-3 border rounded-lg bg-card shadow-sm border-border/80">
         <div className="flex items-center gap-1.5">
           <Server className="h-4 w-4 text-muted-foreground/80" />
           <span>Servers: <strong className="text-foreground">{stats.checkedServers}/{stats.totalServers}</strong></span>
         </div>
-        <div className="h-3 w-px bg-border" />
+        <div className="hidden sm:block h-3 w-px bg-border" />
         <div className="flex items-center gap-1.5">
           <Database className="h-4 w-4 text-muted-foreground/80" />
           <span>Databases: <strong className="text-foreground">{stats.checkedDbs}/{stats.totalDbs}</strong></span>
         </div>
-        <div className="h-3 w-px bg-border" />
+        <div className="hidden sm:block h-3 w-px bg-border" />
         <div className="flex items-center gap-1.5">
           <Table2 className="h-4 w-4 text-muted-foreground/80" />
           <span>Tables: <strong className="text-foreground">{stats.checkedTables}/{stats.totalTables}</strong></span>
@@ -372,7 +372,7 @@ export function PermissionTree({ treeData, onTreeChange }: PermissionTreeProps) 
 
                 {/* Server Databases (Children) */}
                 {isServerExpanded && (
-                  <div className="bg-muted/10 border-t border-border/40 pl-9 divide-y divide-border/40">
+                  <div className="bg-muted/10 border-t border-border/40 pl-4 sm:pl-9 divide-y divide-border/40">
                     {server.databases.length === 0 ? (
                       <div className="p-3 text-[11px] text-muted-foreground italic">
                         No database catalogs discovered on this SQL Server.
@@ -416,7 +416,7 @@ export function PermissionTree({ treeData, onTreeChange }: PermissionTreeProps) 
 
                             {/* Database Tables (Grandchildren) */}
                             {isDbExpanded && (
-                              <div className="bg-card pl-10 pr-4 py-2 border-t border-border/20 divide-y divide-border/20 max-h-72 overflow-y-auto scrollbar-thin">
+                              <div className="bg-card pl-6 sm:pl-10 pr-4 py-2 border-t border-border/20 divide-y divide-border/20 max-h-72 overflow-y-auto scrollbar-thin">
                                 {db.tables.length === 0 ? (
                                   <div className="py-2 text-[10px] text-muted-foreground italic">
                                     No tables registered. Execute sync to fetch schema metadata.
@@ -432,9 +432,9 @@ export function PermissionTree({ treeData, onTreeChange }: PermissionTreeProps) 
                                         state={tbl.checked ? "checked" : "unchecked"}
                                         onChange={() => handleTableCheckToggle(server.server_id, db.database_id, tbl.table_id)}
                                       />
-                                      <div className="flex items-center gap-2">
-                                        <Table2 className="h-3 w-3 text-muted-foreground/60 group-hover:text-primary transition-colors" />
-                                        <span className="text-xs font-mono">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <Table2 className="h-3 w-3 text-muted-foreground/60 group-hover:text-primary transition-colors shrink-0" />
+                                        <span className="text-xs font-mono break-all sm:break-normal flex flex-wrap items-center">
                                           <span className="opacity-60">{tbl.schema_name}</span>
                                           <span>.</span>
                                           <span className="text-foreground font-medium">{tbl.table_name}</span>
