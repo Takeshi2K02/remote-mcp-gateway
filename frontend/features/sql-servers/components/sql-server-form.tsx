@@ -175,11 +175,16 @@ export function SQLServerForm({ defaultValues, onSubmit, onCancel, isLoading }: 
           <Input
             id="secret_reference"
             name="secret_reference"
-            placeholder="e.g. kv://secrets/db-prod-password"
+            placeholder="e.g. db-prod-password"
             value={formData.secret_reference}
             onChange={handleChange}
             disabled={isLoading}
           />
+          <span className="text-xs text-muted-foreground">
+            Enter the Key Vault secret&apos;s name only — not the full secret
+            identifier URI (e.g. use &quot;db-prod-password&quot;, not
+            &quot;https://vault.vault.azure.net/secrets/db-prod-password/…&quot;).
+          </span>
           {errors.secret_reference && (
             <span className="text-xs text-destructive">{errors.secret_reference}</span>
           )}
