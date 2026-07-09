@@ -7,7 +7,7 @@ from starlette.requests import Request
 from app.core.security import verify_app_access_token
 from app.db.database import SessionLocal
 from app.mcp.context import MCPRequestContext, set_current_context, clear_current_context
-from app.models.user import User
+from app.services.user_service import UserService
 
 
 class MCPAuthMiddleware(BaseHTTPMiddleware):
@@ -54,26 +54,19 @@ class MCPAuthMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Unauthorized: Invalid token claims"},
                 )
 
-            # Get user from database
+            # Get user from database. A valid app JWT is only ever minted
+            # after /auth/callback has already provisioned this user, so
+            # this call is a defense-in-depth backstop (e.g. the user row
+            # was deleted after the token was issued), not the primary
+            # provisioning path.
             db = SessionLocal()
             try:
-                user = (
-                    db.query(User)
-                    .filter(User.entra_object_id == entra_object_id)
-                    .first()
+                user, _created = UserService(db).get_or_provision(
+                    entra_object_id=entra_object_id,
+                    email=email,
+                    full_name=full_name,
                 )
-                if not user:
-                    # Sync user dynamically if authenticated but not local
-                    user = User(
-                        entra_object_id=entra_object_id,
-                        email=email,
-                        full_name=full_name,
-                        is_active=True,
-                    )
-                    db.add(user)
-                    db.commit()
-                    db.refresh(user)
-                elif not user.is_active:
+                if not user.is_active:
                     return JSONResponse(
                         status_code=status.HTTP_403_FORBIDDEN,
                         content={"detail": "Forbidden: User account is inactive"},

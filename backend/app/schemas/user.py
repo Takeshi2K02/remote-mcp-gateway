@@ -18,5 +18,7 @@ class UserResponse(UserBase):
     id: int
     entra_object_id: str
     created_at: datetime
+    last_login_at: datetime | None = None
+    has_permissions: bool = False
 
     model_config = ConfigDict(from_attributes=True)

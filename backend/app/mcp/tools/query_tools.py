@@ -2,6 +2,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from app.db.database import SessionLocal
 from app.mcp.context import MCPContext, get_current_context
+from app.mcp.errors import to_mcp_error_response
 from app.services.sql_execution_service import SQLExecutionService
 
 
@@ -48,11 +49,7 @@ def register_query_tools(mcp: FastMCP) -> None:
             }
 
         except Exception as exc:
-            return {
-                "success": False,
-                "error": str(exc),
-                "error_type": type(exc).__name__,
-            }
+            return to_mcp_error_response(exc)
 
         finally:
             db.close()

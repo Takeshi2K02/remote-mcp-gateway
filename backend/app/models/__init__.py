@@ -3,6 +3,7 @@ from .database import Database
 from .database_table import DatabaseTable
 from .sql_server import SQLServer
 from .user import User
+from .user_event import UserEvent
 from .user_database_permission import UserDatabasePermission
 from .user_sql_server_permission import UserSQLServerPermission
 from .user_table_permission import UserTablePermission
