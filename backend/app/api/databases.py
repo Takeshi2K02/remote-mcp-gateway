@@ -19,10 +19,10 @@ router = APIRouter(prefix="/databases", tags=["Databases"])
 @router.get("/", response_model=list[DatabaseResponse])
 def list_databases(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)   
+    current_user: User = Depends(get_current_user)
     ):
     service = DatabaseService(db)
-    return service.list_databases(current_user)
+    return service.list_databases()
 
 
 @router.get("/{database_id}", response_model=DatabaseResponse)

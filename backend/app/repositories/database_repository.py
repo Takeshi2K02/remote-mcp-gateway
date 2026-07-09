@@ -2,8 +2,6 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 from app.models.database import Database
 from app.schemas.database import DatabaseCreate, DatabaseUpdate
-from app.models.user_database_permission import UserDatabasePermission
-from app.models.user import User
 
 
 class DatabaseRepository:
@@ -35,16 +33,8 @@ class DatabaseRepository:
     ) -> Database | None:
         return self.get_by_server_and_name(sql_server_id, name)
 
-    def list_all(self, current_user: User):
-        return (
-            self.db.query(Database)
-            .join(
-                UserDatabasePermission,
-                Database.id == UserDatabasePermission.database_id,
-            )
-            .filter(UserDatabasePermission.user_id == current_user.id)
-            .all()
-        )
+    def list_all(self) -> list[Database]:
+        return self.db.query(Database).order_by(Database.name.asc()).all()
 
     def list_by_server(self, sql_server_id: int) -> list[Database]:
         return (
