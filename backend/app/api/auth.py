@@ -8,6 +8,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.jwt_service import create_access_token
 from app.core.config import get_settings
 from app.models.user import User
+from app.services.user_service import UserService
 
 settings = get_settings()
 
@@ -54,33 +55,23 @@ async def auth_callback(
     email = user_info.get("email") or user_info.get("preferred_username")
     full_name = user_info.get("name")
 
-    # Create or update local user
-    user = (
-        db.query(User)
-        .filter(User.entra_object_id == entra_object_id)
-        .first()
+    # JIT auto-provision (or refresh) the local user. This is the primary
+    # provisioning point: it runs after Microsoft's token has been verified
+    # (authorize_access_token above) and before we mint our own app JWT.
+    user_service = UserService(db)
+    user, _created = user_service.get_or_provision(
+        entra_object_id=entra_object_id,
+        email=email,
+        full_name=full_name,
     )
-    if user:
-        user.email = email
-        user.full_name = full_name
-        db.commit()
-        db.refresh(user)
-    else:
-        user = User(
-            entra_object_id=entra_object_id,
-            email=email,
-            full_name=full_name,
-            is_active=True,
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
 
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive",
         )
+
+    user_service.record_login(user)
 
     # Store user identity in session
     request.session["entra_object_id"] = entra_object_id
@@ -118,12 +109,3 @@ def get_me(current_user: User = Depends(get_current_user)):
         "full_name": current_user.full_name,
         "is_active": current_user.is_active,
     }
-
-
-# TODO (Production):
-# Complete local user sync during Microsoft callback:
-# 1. Validate Microsoft identity claims.
-# 2. Create/update local user by entra_object_id.
-# 3. Reject inactive users.
-# 4. Issue application JWT only after local authorization succeeds.
-# 5. Prefer HttpOnly secure cookies before production deployment.

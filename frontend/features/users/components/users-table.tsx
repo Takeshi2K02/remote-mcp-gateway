@@ -271,6 +271,8 @@ export function UsersTable() {
                     <th className="px-6 py-3">Entra Object ID</th>
                     <th className="px-6 py-3">Status</th>
                     <th className="px-6 py-3">Role</th>
+                    <th className="px-6 py-3">Access</th>
+                    <th className="px-6 py-3">Last Login</th>
                     <th className="px-6 py-3">Created</th>
                     <th className="px-6 py-3 text-right">Actions</th>
                   </tr>
@@ -296,6 +298,23 @@ export function UsersTable() {
                         <Badge variant={user.is_admin ? "default" : "secondary"}>
                           {user.is_admin ? "Admin" : "Standard"}
                         </Badge>
+                      </td>
+                      <td className="px-6 py-4">
+                        <Badge
+                          variant={user.has_permissions ? "success" : "outline"}
+                          title={
+                            user.has_permissions
+                              ? "This user has at least one resource permission granted."
+                              : "Provisioned but never granted any resource access."
+                          }
+                        >
+                          {user.has_permissions ? "Granted" : "No Access Yet"}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4 text-xs text-muted-foreground">
+                        {user.last_login_at
+                          ? new Date(user.last_login_at).toLocaleString()
+                          : "Never"}
                       </td>
                       <td className="px-6 py-4 text-xs text-muted-foreground">
                         {new Date(user.created_at).toLocaleDateString()}
@@ -448,6 +467,28 @@ export function UsersTable() {
                       {viewingUser.is_admin ? "Admin" : "Standard"}
                     </Badge>
                   </div>
+                </div>
+
+                <div className="space-y-1 p-2 bg-card rounded border border-border/80">
+                  <div className="flex items-center gap-1 text-muted-foreground">
+                    <KeyRound className="h-3 w-3" />
+                    <span>Resource Access</span>
+                  </div>
+                  <Badge variant={viewingUser.has_permissions ? "success" : "outline"}>
+                    {viewingUser.has_permissions ? "Granted" : "No Access Yet"}
+                  </Badge>
+                </div>
+
+                <div className="space-y-1 p-2 bg-card rounded border border-border/80">
+                  <div className="flex items-center gap-1 text-muted-foreground">
+                    <Calendar className="h-3 w-3" />
+                    <span>Last Login</span>
+                  </div>
+                  <span className="font-semibold">
+                    {viewingUser.last_login_at
+                      ? new Date(viewingUser.last_login_at).toLocaleString()
+                      : "Never"}
+                  </span>
                 </div>
               </div>
               <div className="flex justify-end pt-3">

@@ -6,4 +6,6 @@ export interface User {
   is_active: boolean;
   is_admin: boolean;
   created_at: string;
+  last_login_at: string | null;
+  has_permissions: boolean;
 }
