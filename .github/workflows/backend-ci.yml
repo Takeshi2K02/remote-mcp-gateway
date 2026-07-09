@@ -157,6 +157,91 @@ jobs:
           docker push "$IMAGE:$SHORT_SHA"
           docker push "$IMAGE:latest"
 
+  # Runs `alembic upgrade head` as an explicit, isolated step - using the
+  # exact image just built above - via a one-shot Azure Container Apps Job
+  # (mcp-gateway-backend-migrate), *before* any traffic is pointed at the
+  # new revision. This replaces the old approach of running migrations
+  # in-process inside the FastAPI lifespan on startup, which had no
+  # separation between "migrate" and "deploy app", no review gate, and
+  # silently swallowed migration failures (the app kept serving traffic
+  # against a partially-migrated schema instead of failing to start).
+  #
+  # The job resource itself (image, env vars, secrets) was created once,
+  # out-of-band, via `az containerapp job create` - this step only updates
+  # its image tag and triggers a run. It reuses the same DB credentials as
+  # the main Container App (fetched as Container App secrets, not
+  # duplicated into GitHub Secrets) and does not need Key Vault or managed
+  # identity access, since `alembic upgrade head` only touches the
+  # gateway's own database via plain DB_* settings.
+  #
+  # A non-zero exit here fails this step (`az containerapp job execution
+  # show` is polled for a terminal status, and the step exits 1 on
+  # anything other than "Succeeded"), which blocks deploy-backend below
+  # via `needs:` - a failed migration never reaches a live revision.
+  run-migrations:
+    name: Run database migrations
+    needs: build-and-push-backend
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      REGISTRY: rmgwregistry.azurecr.io
+      IMAGE_NAME: mcp-gateway-backend
+      MIGRATE_JOB_NAME: mcp-gateway-backend-migrate
+      RESOURCE_GROUP: rg-remote-mcp-gateway-dev
+
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run alembic upgrade head via Container Apps Job
+        run: |
+          set -euo pipefail
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$SHORT_SHA"
+
+          az containerapp job update \
+            --name ${{ env.MIGRATE_JOB_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image "$IMAGE"
+
+          EXECUTION_NAME=$(az containerapp job start \
+            --name ${{ env.MIGRATE_JOB_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image "$IMAGE" \
+            --query "name" -o tsv)
+
+          echo "Migration job execution: $EXECUTION_NAME"
+
+          for i in $(seq 1 30); do
+            STATUS=$(az containerapp job execution show \
+              --name ${{ env.MIGRATE_JOB_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --job-execution-name "$EXECUTION_NAME" \
+              --query "properties.status" -o tsv)
+            echo "Status: $STATUS"
+            if [ "$STATUS" = "Succeeded" ]; then
+              echo "Migration completed successfully."
+              exit 0
+            fi
+            if [ "$STATUS" = "Failed" ]; then
+              echo "::error::Migration job failed. Check logs with: az containerapp job logs show --name ${{ env.MIGRATE_JOB_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --execution $EXECUTION_NAME"
+              exit 1
+            fi
+            sleep 10
+          done
+
+          echo "::error::Migration job did not reach a terminal state within 5 minutes."
+          exit 1
+
   # Points the existing Container App at the image just pushed above. This
   # app runs in Single revision mode, so `az containerapp update --image`
   # creates a new revision and cuts 100% of traffic over to it as soon as
@@ -166,9 +251,13 @@ jobs:
   # back with `az containerapp update --image ...:<previous-sha>` even if
   # `latest` has since moved on. Only `--image` is passed, so existing env
   # vars, secrets, scale rules, and resource limits are left untouched.
+  #
+  # Depends on run-migrations, not just build-and-push-backend: the new
+  # revision must never receive traffic against a schema it hasn't been
+  # migrated for.
   deploy-backend:
     name: Deploy backend to Container Apps
-    needs: build-and-push-backend
+    needs: [build-and-push-backend, run-migrations]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 

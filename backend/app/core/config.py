@@ -76,6 +76,18 @@ class Settings(BaseSettings):
         alias="MCP_ENABLE_DNS_REBINDING_PROTECTION",
     )
 
+    # Off by default. Production runs migrations as an explicit, isolated
+    # CI/CD step (see .github/workflows/backend-ci.yml's run-migrations
+    # job) before a new revision receives traffic - never implicitly on
+    # every app startup. This flag exists purely as a local/dev
+    # convenience (docker-compose up and you're on head, no separate
+    # alembic command needed) and must stay disabled anywhere migrations
+    # are gated by CI.
+    auto_migrate_on_startup: bool = Field(
+        default=False,
+        alias="AUTO_MIGRATE_ON_STARTUP",
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
