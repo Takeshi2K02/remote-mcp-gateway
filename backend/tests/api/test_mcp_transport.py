@@ -159,7 +159,7 @@ def test_mcp_streamable_http_initialization_no_trailing_slash(client, auth_heade
 def test_mcp_transport_allowed_azure_host(client, auth_headers):
     """Test that the configured Azure host is accepted."""
     headers = auth_headers.copy()
-    headers["host"] = "backend-gateway.gentleforest-38e3a42b.southeastasia.azurecontainerapps.io"
+    headers["host"] = "mcp-gateway-backend.gentleforest-38e3a42b.southeastasia.azurecontainerapps.io"
     
     payload = {
         "jsonrpc": "2.0",
