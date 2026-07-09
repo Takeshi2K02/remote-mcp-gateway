@@ -2,6 +2,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from app.db.database import SessionLocal
 from app.mcp.context import get_current_context
+from app.mcp.errors import NO_ACCESS_MESSAGE
 from app.models.database import Database
 from app.models.database_table import DatabaseTable
 from app.models.user_database_permission import UserDatabasePermission
@@ -12,7 +13,7 @@ def register_metadata_tools(mcp: FastMCP) -> None:
     # TODO: Remove MCP debug logging after protocol verification
     print("Inside register_metadata_tools()...", flush=True)
     @mcp.tool()
-    def list_accessible_databases() -> list[dict[str, Any]]:
+    def list_accessible_databases() -> dict[str, Any]:
         """
         List databases the user is allowed to access.
         """
@@ -34,15 +35,28 @@ def register_metadata_tools(mcp: FastMCP) -> None:
                 .all()
             )
 
-            return [
-                {
-                    "id": database.id,
-                    "name": database.name,
-                    "sql_server_id": database.sql_server_id,
-                    "description": database.description,
+            if not databases:
+                return {
+                    "success": True,
+                    "count": 0,
+                    "databases": [],
+                    "message": NO_ACCESS_MESSAGE,
                 }
-                for database in databases
-            ]
+
+            return {
+                "success": True,
+                "count": len(databases),
+                "databases": [
+                    {
+                        "id": database.id,
+                        "name": database.name,
+                        "sql_server_id": database.sql_server_id,
+                        "description": database.description,
+                    }
+                    for database in databases
+                ],
+                "message": None,
+            }
 
         finally:
             db.close()
@@ -50,7 +64,7 @@ def register_metadata_tools(mcp: FastMCP) -> None:
     @mcp.tool()
     def list_accessible_tables(
         database_id: int,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         """
         List tables the user is allowed to access in a database.
         """
@@ -76,16 +90,34 @@ def register_metadata_tools(mcp: FastMCP) -> None:
                 .all()
             )
 
-            return [
-                {
-                    "id": table.id,
-                    "database_id": table.database_id,
-                    "schema_name": table.schema_name,
-                    "table_name": table.table_name,
-                    "description": table.description,
+            if not tables:
+                return {
+                    "success": True,
+                    "count": 0,
+                    "tables": [],
+                    "message": (
+                        "You don't currently have access to any tables in "
+                        "this database, or the database itself is not "
+                        "accessible to you. Contact an administrator to "
+                        "request access."
+                    ),
                 }
-                for table in tables
-            ]
+
+            return {
+                "success": True,
+                "count": len(tables),
+                "tables": [
+                    {
+                        "id": table.id,
+                        "database_id": table.database_id,
+                        "schema_name": table.schema_name,
+                        "table_name": table.table_name,
+                        "description": table.description,
+                    }
+                    for table in tables
+                ],
+                "message": None,
+            }
 
         finally:
             db.close()
@@ -118,7 +150,10 @@ def register_metadata_tools(mcp: FastMCP) -> None:
             if not table:
                 return {
                     "found": False,
-                    "message": "Table not found or user does not have access.",
+                    "message": (
+                        "Table not found, or you don't have access to it. "
+                        "Contact an administrator to request access."
+                    ),
                 }
 
             return {
