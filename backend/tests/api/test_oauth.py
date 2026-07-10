@@ -1,10 +1,13 @@
 from datetime import datetime, timedelta, UTC
+from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import app.core.retry
 import app.db.database
 import app.auth.middleware
 from app.core.config import get_settings
@@ -346,6 +349,55 @@ def test_reused_authorization_code(client, db_session):
     assert response.status_code == 400
     assert response.json()["detail"]["error"] == "invalid_grant"
     assert "consumed" in response.json()["detail"]["error_description"]
+
+
+def test_authorize_retries_through_simulated_db_resume_delay(client, db_session):
+    """Simulates the metadata DB resuming from serverless auto-pause: the
+    client_id lookup fails with an OperationalError on the first two
+    attempts, then succeeds once the database is warm. The request should
+    still complete successfully instead of surfacing a 500."""
+    client.get("/auth/test-set-session", params={"entra_object_id": "test-entra-user-id"})
+
+    auth_params = {
+        "client_id": "client_public_id",
+        "redirect_uri": "http://localhost/callback",
+        "response_type": "code",
+        "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        "code_challenge_method": "S256",
+        "scope": "mcp",
+        "state": "xyz",
+    }
+
+    # Only the first two calls to the OAuthClient lookup should fail (the
+    # simulated resume delay); later OAuthClient lookups made further down
+    # the flow (e.g. by OAuthService.create_authorization_code) are
+    # unrelated and must succeed normally.
+    failures_remaining = {"n": 2}
+    real_query = db_session.query
+
+    def flaky_query(*args, **kwargs):
+        if args and args[0] is OAuthClient and failures_remaining["n"] > 0:
+            failures_remaining["n"] -= 1
+            raise OperationalError(
+                "SELECT 1",
+                {},
+                Exception(
+                    "('HYT00', '[HYT00] [Microsoft][ODBC Driver 18 for "
+                    "SQL Server]Login timeout expired (0) (SQLDriverConnect)')"
+                ),
+            )
+        return real_query(*args, **kwargs)
+
+    with patch.object(db_session, "query", side_effect=flaky_query), \
+         patch.object(app.core.retry.time, "sleep") as mock_sleep:
+        response = client.get(
+            "/oauth/authorize", params=auth_params, follow_redirects=False
+        )
+
+    assert response.status_code == 307, response.text
+    assert "code=" in response.headers["location"]
+    assert failures_remaining["n"] == 0
+    assert mock_sleep.call_count == 2
 
 
 def test_unauthenticated_authorize_redirects_to_login(client):

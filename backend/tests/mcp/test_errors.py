@@ -1,4 +1,5 @@
 from fastapi import HTTPException, status
+from app.core.sql_errors import SQLConnectionErrorInfo, SQLConnectionError
 from app.mcp.errors import NO_ACCESS_MESSAGE, to_mcp_error_response
 
 
@@ -37,3 +38,17 @@ def test_generic_exception_maps_to_execution_error():
     assert result["success"] is False
     assert result["error_type"] == "execution_error"
     assert result["error"] == "sql_server_id is required."
+
+
+def test_sql_connection_error_preserves_distinct_error_type():
+    exc = SQLConnectionError(
+        SQLConnectionErrorInfo(
+            error_type="connection_timeout",
+            message="Connection timeout while reaching 'SQL Server 3'.",
+        )
+    )
+    result = to_mcp_error_response(exc)
+
+    assert result["success"] is False
+    assert result["error_type"] == "connection_timeout"
+    assert result["error"] == "Connection timeout while reaching 'SQL Server 3'."

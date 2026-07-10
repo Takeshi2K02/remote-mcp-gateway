@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.core.retry import retry_on_operational_error
 from app.db.database import get_db
 from app.models.oauth_client import OAuthClient
 from app.models.user import User
@@ -25,8 +26,10 @@ def authorize(
     db: Session = Depends(get_db),
 ):
     # 1. Validate client_id first (no redirect if invalid)
-    client = (
-        db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
+    client = retry_on_operational_error(
+        lambda: db.query(OAuthClient)
+        .filter(OAuthClient.client_id == client_id)
+        .first()
     )
     if not client or not client.is_active:
         raise HTTPException(

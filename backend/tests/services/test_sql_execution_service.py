@@ -1,4 +1,8 @@
 import pytest
+from sqlalchemy.exc import OperationalError
+
+from app.core.key_vault import SecretResolutionError
+from app.core.sql_errors import SQLConnectionError
 from app.mcp.context import MCPContext
 from app.services.sql_execution_service import SQLExecutionService
 
@@ -137,3 +141,80 @@ def test_execute_select_query_blocks_unauthorized_user():
             context=create_context(user_id=999),
             query="SELECT * FROM customers",
         )
+
+
+class RaisingConnectionManager:
+    """Fake connection manager whose get_engine() always raises."""
+
+    def __init__(self, exc: Exception):
+        self._exc = exc
+
+    def get_engine(self, sql_server_id: int, database_id: int):
+        raise self._exc
+
+
+def create_service_with_connection_manager(connection_manager) -> SQLExecutionService:
+    service = SQLExecutionService(
+        db=None,
+        connection_manager=connection_manager,
+        permission_service=FakePermissionService(),
+        query_guard=FakeQueryGuard(),
+        query_rewriter=FakeQueryRewriter(),
+    )
+    service.settings = FakeSettings()
+    return service
+
+
+def make_operational_error(driver_message: str) -> OperationalError:
+    return OperationalError("SELECT 1", {}, Exception(driver_message))
+
+
+def test_execute_select_query_surfaces_login_timeout_as_connection_timeout():
+    exc = make_operational_error(
+        "('HYT00', '[HYT00] [Microsoft][ODBC Driver 18 for SQL Server]"
+        "Login timeout expired (0) (SQLDriverConnect)')"
+    )
+    service = create_service_with_connection_manager(RaisingConnectionManager(exc))
+
+    with pytest.raises(SQLConnectionError) as exc_info:
+        service.execute_select_query(
+            context=create_context(),
+            query="SELECT * FROM customers",
+        )
+
+    assert exc_info.value.error_type == "connection_timeout"
+    assert "paused" in str(exc_info.value).lower()
+
+
+def test_execute_select_query_surfaces_tcp_reset_as_connection_reset():
+    exc = make_operational_error(
+        "('08S01', '[08S01] [Microsoft][ODBC Driver 18 for SQL Server]"
+        "TCP Provider: Error code 0x68 (104) (SQLExecDirectW)')"
+    )
+    service = create_service_with_connection_manager(RaisingConnectionManager(exc))
+
+    with pytest.raises(SQLConnectionError) as exc_info:
+        service.execute_select_query(
+            context=create_context(),
+            query="SELECT * FROM customers",
+        )
+
+    assert exc_info.value.error_type == "connection_reset"
+    assert "retry" in str(exc_info.value).lower()
+
+
+def test_execute_select_query_surfaces_key_vault_auth_failure():
+    exc = SecretResolutionError(
+        "Key Vault authentication failed. Verify the application's managed "
+        "identity has been granted the 'Key Vault Secrets User' role on the vault."
+    )
+    service = create_service_with_connection_manager(RaisingConnectionManager(exc))
+
+    with pytest.raises(SQLConnectionError) as exc_info:
+        service.execute_select_query(
+            context=create_context(),
+            query="SELECT * FROM customers",
+        )
+
+    assert exc_info.value.error_type == "key_vault_error"
+    assert "Key Vault Secrets User" in str(exc_info.value)

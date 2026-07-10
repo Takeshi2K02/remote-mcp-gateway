@@ -1,5 +1,6 @@
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
+from app.core.retry import retry_on_operational_error
 from app.mcp.connection_factory import SQLConnectionFactory
 from app.mcp.session_cache import SQLSessionCache
 from app.models.database import Database
@@ -45,8 +46,8 @@ class SQLConnectionManager:
         return engine
 
     def _get_sql_server(self, sql_server_id: int) -> SQLServer:
-        sql_server = (
-            self.db.query(SQLServer)
+        sql_server = retry_on_operational_error(
+            lambda: self.db.query(SQLServer)
             .filter(SQLServer.id == sql_server_id)
             .first()
         )
@@ -60,8 +61,8 @@ class SQLConnectionManager:
         return sql_server
 
     def _get_database(self, database_id: int) -> Database:
-        database = (
-            self.db.query(Database)
+        database = retry_on_operational_error(
+            lambda: self.db.query(Database)
             .filter(Database.id == database_id)
             .first()
         )
