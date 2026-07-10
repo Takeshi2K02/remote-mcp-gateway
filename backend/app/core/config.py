@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     )
 
     mcp_allowed_hosts: str = Field(
-        default="localhost,localhost:8000,127.0.0.1,127.0.0.1:8000,backend-gateway.gentleforest-38e3a42b.southeastasia.azurecontainerapps.io",
+        default="localhost,localhost:8000,127.0.0.1,127.0.0.1:8000,mcp-gateway-backend.gentleforest-38e3a42b.southeastasia.azurecontainerapps.io",
         alias="MCP_ALLOWED_HOSTS",
     )
 
