@@ -84,3 +84,15 @@ class SQLConnectionError(RuntimeError):
     def __init__(self, info: SQLConnectionErrorInfo):
         super().__init__(info.message)
         self.error_type = info.error_type
+
+
+class SQLQueryError(RuntimeError):
+    """
+    Raised when a query fails because of the query itself (syntax error,
+    invalid object, constraint violation) rather than a connection-level
+    problem. The underlying driver message describes the caller's own
+    query and is safe and useful to surface verbatim — unlike connection
+    errors, it carries no host/credential detail.
+    """
+
+    error_type = "sql_error"
