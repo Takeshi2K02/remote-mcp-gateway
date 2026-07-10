@@ -3,6 +3,7 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
 import app.models  # noqa: F401 - registers all models on Base.metadata for autogenerate
+from app.core.retry import retry_on_operational_error
 from app.db.database import Base, connection_url
 
 # this is the Alembic Config object, which provides
@@ -70,7 +71,12 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
-    with connectable.connect() as connection:
+    # The metadata DB runs on Azure SQL's serverless Free Limit tier, which
+    # cannot be taken off auto-pause. Retry the initial connect so a resume
+    # delay (login timeout on the first attempt) doesn't fail the whole
+    # migration job.
+    connection = retry_on_operational_error(connectable.connect)
+    with connection:
         context.configure(
             connection=connection, target_metadata=target_metadata
         )
