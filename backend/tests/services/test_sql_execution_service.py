@@ -1,8 +1,8 @@
 import pytest
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.core.key_vault import SecretResolutionError
-from app.core.sql_errors import SQLConnectionError
+from app.core.sql_errors import SQLConnectionError, SQLQueryError
 from app.mcp.context import MCPContext
 from app.services.sql_execution_service import SQLExecutionService
 
@@ -218,3 +218,69 @@ def test_execute_select_query_surfaces_key_vault_auth_failure():
 
     assert exc_info.value.error_type == "key_vault_error"
     assert "Key Vault Secrets User" in str(exc_info.value)
+
+
+class RaisingOnExecuteConnection:
+    """Fake connection whose execute() always raises - simulates the engine
+    connecting successfully but the query itself failing."""
+
+    def __init__(self, exc: Exception):
+        self._exc = exc
+
+    def execute(self, *args, **kwargs):
+        raise self._exc
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+
+class RaisingOnExecuteEngine:
+    def __init__(self, exc: Exception):
+        self._exc = exc
+
+    def connect(self):
+        return RaisingOnExecuteConnection(self._exc)
+
+
+class RaisingOnExecuteConnectionManager:
+    def __init__(self, exc: Exception):
+        self._exc = exc
+
+    def get_engine(self, sql_server_id: int, database_id: int):
+        return RaisingOnExecuteEngine(self._exc)
+
+
+def test_execute_select_query_surfaces_sql_syntax_error_distinctly_from_connection_error():
+    """Regression test: a query-level error (invalid ORDER BY in a derived
+    table, seen live from the row-limiting rewrite) must not be
+    misclassified as a connection/firewall problem."""
+    exc = ProgrammingError(
+        "SELECT TOP (?) * FROM (...) AS gateway_limited_query",
+        {},
+        Exception(
+            "('42000', '[42000] [Microsoft][ODBC Driver 18 for SQL Server]"
+            "[SQL Server]The ORDER BY clause is invalid in views, inline "
+            "functions, derived tables, subqueries, and common table "
+            "expressions, unless TOP, OFFSET or FOR XML is also specified. "
+            "(1033) (SQLExecDirectW)')"
+        ),
+    )
+    service = create_service_with_connection_manager(
+        RaisingOnExecuteConnectionManager(exc)
+    )
+
+    with pytest.raises(SQLQueryError) as exc_info:
+        service.execute_select_query(
+            context=create_context(),
+            query="SELECT country, COUNT(*) FROM customers GROUP BY country ORDER BY 2",
+        )
+
+    assert exc_info.value.error_type == "sql_error"
+    message = str(exc_info.value)
+    assert "ORDER BY" in message
+    # Must not be misdescribed as a connectivity/credentials problem.
+    assert "verify host" not in message.lower()
+    assert "credentials" not in message.lower()

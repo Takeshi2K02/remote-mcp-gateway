@@ -1,6 +1,6 @@
 from typing import Any
 from fastapi import HTTPException, status
-from app.core.sql_errors import SQLConnectionError
+from app.core.sql_errors import SQLConnectionError, SQLQueryError
 
 NO_ACCESS_MESSAGE = (
     "You don't currently have access to this resource on the gateway. "
@@ -14,7 +14,7 @@ def to_mcp_error_response(exc: Exception) -> dict[str, Any]:
     structured, human-readable response that Claude can relay directly to
     the end user in chat.
     """
-    if isinstance(exc, SQLConnectionError):
+    if isinstance(exc, (SQLConnectionError, SQLQueryError)):
         return {
             "success": False,
             "error_type": exc.error_type,
