@@ -208,15 +208,22 @@ jobs:
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$SHORT_SHA"
 
+          # --image and --command are set together in one `job update` call,
+          # deliberately. `az containerapp job update --image X` alone (with
+          # --command omitted) was observed to silently drop the job's
+          # configured command - the execution then ran with no replica ever
+          # created and no logs, since the container had nothing to exec.
+          # Always specifying the full desired container spec in one call
+          # avoids relying on partial-update semantics.
           az containerapp job update \
             --name ${{ env.MIGRATE_JOB_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image "$IMAGE"
+            --image "$IMAGE" \
+            --command "alembic" "upgrade" "head"
 
           EXECUTION_NAME=$(az containerapp job start \
             --name ${{ env.MIGRATE_JOB_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image "$IMAGE" \
             --query "name" -o tsv)
 
           echo "Migration job execution: $EXECUTION_NAME"

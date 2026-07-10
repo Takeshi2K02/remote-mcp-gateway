@@ -42,6 +42,17 @@ az containerapp job create \
 
 It reuses the same DB credentials as the main app (copied as Container-App-Job-scoped secrets, not duplicated into GitHub Secrets) and does **not** need Key Vault or managed identity access — `alembic upgrade head` only touches the gateway's own database via plain `DB_*` settings, never the per-SQL-server Key Vault secret references used elsewhere in the app.
 
+**Second CLI gotcha hit while building this**: the job's first few real executions failed with `ProcessExited, exit code: 1` even after the command-syntax issue above was fixed. The actual cause: `DB_PASSWORD`, `ENTRA_CLIENT_SECRET`, `SECRET_KEY`, and `APP_JWT_SECRET_KEY` were all silently bound to a single nonexistent secret ref (`cappjob-mcp-gateway-backend-migrate`) instead of their own correctly-named secrets (`db-password`, `entra-client-secret`, `secret-key`, `app-jwt-secret-key`) — an artifact of an earlier `job update` call, not something the `--env-vars` flag at creation time did wrong. Confirmed by running the identical `alembic upgrade head` command directly inside the main app's container (same image, same DB) via `az containerapp exec`, where it succeeded cleanly — proving the DB/credentials were fine and the job's own env var bindings were the actual problem. Fixed with:
+```bash
+az containerapp job update --name mcp-gateway-backend-migrate --resource-group rg-remote-mcp-gateway-dev \
+  --set-env-vars \
+    "DB_PASSWORD=secretref:db-password" \
+    "ENTRA_CLIENT_SECRET=secretref:entra-client-secret" \
+    "SECRET_KEY=secretref:secret-key" \
+    "APP_JWT_SECRET_KEY=secretref:app-jwt-secret-key"
+```
+If a future migration job execution fails with `ProcessExited, exit code: 1` and no useful log output, check `az containerapp job show --name mcp-gateway-backend-migrate --resource-group rg-remote-mcp-gateway-dev --query "properties.template.containers[0].env"` for exactly this class of mismatch before assuming it's a code or DB-connectivity problem.
+
 The CI step (`run-migrations`) updates the job's image to the current build (`az containerapp job update --image ...`), starts it (`az containerapp job start --image ...`), then polls `az containerapp job execution show` until the execution reaches `Succeeded` or `Failed`.
 
 **CLI gotcha hit while building this**: `az containerapp job ... --command` takes each argv token as a *separate* quoted argument (`--command "alembic" "upgrade" "head"`), not one string. Passing a single string (`--command "alembic upgrade head"`) makes the container try to exec a binary literally named `alembic upgrade head`, which fails immediately with no output. Passing tokens starting with `-` (e.g. `"python" "-m" "alembic" ...`) also breaks — the Azure CLI's argument parser stops consuming the `--command` list as soon as it sees something that looks like another flag. Using the `alembic` console script directly (no `-m`) sidesteps both problems.
