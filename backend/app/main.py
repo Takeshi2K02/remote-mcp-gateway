@@ -24,6 +24,7 @@ from app.api.oauth import router as oauth_router
 from app.api.users import router as users_router
 from app.auth.middleware import MCPAuthMiddleware
 from app.core.config import get_settings
+from app.core.exceptions import unhandled_exception_handler
 from app.db.database import get_db
 
 settings = get_settings()
@@ -33,6 +34,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=mcp_lifespan,
 )
+
+app.add_exception_handler(Exception, unhandled_exception_handler)
 
 app.add_middleware(
     CORSMiddleware,

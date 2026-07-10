@@ -6,6 +6,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from app.core.config import get_settings
+from app.core.key_vault import SecretResolutionError
+from app.core.sql_errors import SQLConnectionError, classify_sql_connection_error
 from app.mcp.connection_manager import SQLConnectionManager
 from app.mcp.context import MCPContext
 from app.mcp.permission_service import MCPPermissionService
@@ -99,8 +101,11 @@ class SQLExecutionService:
 
                 return rows
 
-        except SQLAlchemyError as exc:
+        except SecretResolutionError as exc:
             duration_ms = int((perf_counter() - start_time) * 1000)
+            info = classify_sql_connection_error(
+                f"SQL Server {context.sql_server_id}", exc
+            )
 
             self._record_audit_log(
                 context=context,
@@ -109,11 +114,30 @@ class SQLExecutionService:
                 row_count=None,
                 duration_ms=duration_ms,
                 status="failed",
-                error_message="Database query execution failed.",
+                error_message=info.message,
+            )
+
+            logger.warning("SQL query execution failed: Key Vault error", exc_info=exc)
+            raise SQLConnectionError(info) from exc
+
+        except SQLAlchemyError as exc:
+            duration_ms = int((perf_counter() - start_time) * 1000)
+            info = classify_sql_connection_error(
+                f"SQL Server {context.sql_server_id}", exc
+            )
+
+            self._record_audit_log(
+                context=context,
+                request_id=request_id,
+                query=query,
+                row_count=None,
+                duration_ms=duration_ms,
+                status="failed",
+                error_message=info.message,
             )
 
             logger.warning("SQL query execution failed", exc_info=exc)
-            raise RuntimeError("Database query execution failed.") from exc
+            raise SQLConnectionError(info) from exc
 
         except Exception as exc:
             duration_ms = int((perf_counter() - start_time) * 1000)

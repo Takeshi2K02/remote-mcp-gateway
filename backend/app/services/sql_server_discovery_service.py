@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from app.core.key_vault import SecretResolutionError
+from app.core.sql_errors import describe_sql_connection_error as _describe_connection_error
 from app.mcp.connection_factory import SQLConnectionFactory
 from app.models.database import Database
 from app.models.sql_server import SQLServer
@@ -25,25 +26,6 @@ logger = logging.getLogger(__name__)
 
 # System databases to exclude from discovery
 _SYSTEM_DATABASES = {"master", "model", "msdb", "tempdb"}
-
-
-def _describe_connection_error(server_name: str, exc: Exception) -> str:
-    """Translate a raw SQLAlchemy/pyodbc error into an actionable message."""
-    text_ = str(exc)
-    if "Login failed" in text_ or "28000" in text_:
-        return (
-            f"SQL authentication failed for '{server_name}'. "
-            "Verify the username and password are correct."
-        )
-    if "timeout" in text_.lower() or "HYT00" in text_:
-        return (
-            f"Connection timeout while reaching '{server_name}'. "
-            "Check firewall rules and network connectivity."
-        )
-    return (
-        f"Could not connect to SQL Server '{server_name}'. "
-        f"Verify host, port, and credentials. Details: {text_.splitlines()[0]}"
-    )
 
 
 class SQLServerDiscoveryService:
