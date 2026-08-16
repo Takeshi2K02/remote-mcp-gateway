@@ -11,15 +11,23 @@
 name: Deploy Backend to Azure App Service
 
 # ── Trigger ───────────────────────────────────────────────────────────────────
-# Run on pushes to main, but only when backend/ files change.
-# This prevents the workflow from firing when only frontend/ (or other) files
-# are modified, keeping CI noise and billable minutes to a minimum.
+# Fires automatically on pushes to main when backend/ files OR this workflow
+# file itself changes. The workflow file path is included so that edits to
+# the CI config (e.g. adding a step, changing the resource group) re-deploy
+# without requiring a separate backend/ change to satisfy the filter.
+#
+# workflow_dispatch lets you kick off a manual run from the GitHub Actions UI
+# without pushing any code — useful when only this file changes (path filter
+# changes don't self-trigger the commit that introduces them) or when you
+# want to force a clean re-deploy on demand.
 on:
   push:
     branches:
       - main
     paths:
       - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
 
 # ── Concurrency ───────────────────────────────────────────────────────────────
 # If a new push arrives while a deploy is still running for the same branch,
