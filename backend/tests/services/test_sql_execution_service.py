@@ -1,7 +1,6 @@
 import pytest
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
-from app.core.key_vault import SecretResolutionError
 from app.core.sql_errors import SQLConnectionError, SQLQueryError
 from app.mcp.context import MCPContext
 from app.services.sql_execution_service import SQLExecutionService
@@ -203,21 +202,6 @@ def test_execute_select_query_surfaces_tcp_reset_as_connection_reset():
     assert "retry" in str(exc_info.value).lower()
 
 
-def test_execute_select_query_surfaces_key_vault_auth_failure():
-    exc = SecretResolutionError(
-        "Key Vault authentication failed. Verify the application's managed "
-        "identity has been granted the 'Key Vault Secrets User' role on the vault."
-    )
-    service = create_service_with_connection_manager(RaisingConnectionManager(exc))
-
-    with pytest.raises(SQLConnectionError) as exc_info:
-        service.execute_select_query(
-            context=create_context(),
-            query="SELECT * FROM customers",
-        )
-
-    assert exc_info.value.error_type == "key_vault_error"
-    assert "Key Vault Secrets User" in str(exc_info.value)
 
 
 class RaisingOnExecuteConnection:

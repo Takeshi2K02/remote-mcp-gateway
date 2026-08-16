@@ -1,6 +1,5 @@
 from sqlalchemy.exc import OperationalError
 
-from app.core.key_vault import SecretResolutionError
 from app.core.sql_errors import classify_sql_connection_error
 
 
@@ -44,18 +43,6 @@ def test_classifies_login_failed_as_sql_authentication_error():
 
     assert info.error_type == "sql_authentication_error"
 
-
-def test_classifies_key_vault_error_distinctly():
-    exc = SecretResolutionError(
-        "Key Vault authentication failed. Verify the application's managed "
-        "identity has been granted the 'Key Vault Secrets User' role on the vault."
-    )
-
-    info = classify_sql_connection_error("MeridianRetailDW", exc)
-
-    assert info.error_type == "key_vault_error"
-    assert "credentials" in info.message.lower()
-    assert "Key Vault Secrets User" in info.message
 
 
 def test_classifies_unknown_error_as_generic_connection_error():

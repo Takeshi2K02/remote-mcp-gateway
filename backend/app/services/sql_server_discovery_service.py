@@ -12,7 +12,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
-from app.core.key_vault import SecretResolutionError
 from app.core.sql_errors import describe_sql_connection_error as _describe_connection_error
 from app.mcp.connection_factory import SQLConnectionFactory
 from app.models.database import Database
@@ -173,16 +172,6 @@ class SQLServerDiscoveryService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(exc),
             ) from exc
-        except SecretResolutionError as exc:
-            logger.error(
-                "Key Vault secret resolution failed for SQL Server %d: %s",
-                sql_server.id,
-                exc,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Key Vault secret resolution failed: {exc}",
-            ) from exc
 
         try:
             with engine.connect() as conn:
@@ -250,14 +239,6 @@ class SQLServerDiscoveryService:
             engine = self.factory.create_engine_for_database(sql_server, database)
         except ValueError as exc:
             raise RuntimeError(str(exc)) from exc
-        except SecretResolutionError as exc:
-            logger.error(
-                "Key Vault secret resolution failed for database '%s' (id=%d): %s",
-                database.name,
-                database.id,
-                exc,
-            )
-            raise RuntimeError(f"Key Vault secret resolution failed: {exc}") from exc
 
         try:
             with engine.connect() as conn:

@@ -6,7 +6,6 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from app.core.config import get_settings
-from app.core.key_vault import SecretResolutionError
 from app.core.sql_errors import (
     SQLConnectionError,
     SQLQueryError,
@@ -104,25 +103,6 @@ class SQLExecutionService:
                 )
 
                 return rows
-
-        except SecretResolutionError as exc:
-            duration_ms = int((perf_counter() - start_time) * 1000)
-            info = classify_sql_connection_error(
-                f"SQL Server {context.sql_server_id}", exc
-            )
-
-            self._record_audit_log(
-                context=context,
-                request_id=request_id,
-                query=query,
-                row_count=None,
-                duration_ms=duration_ms,
-                status="failed",
-                error_message=info.message,
-            )
-
-            logger.warning("SQL query execution failed: Key Vault error", exc_info=exc)
-            raise SQLConnectionError(info) from exc
 
         except OperationalError as exc:
             duration_ms = int((perf_counter() - start_time) * 1000)

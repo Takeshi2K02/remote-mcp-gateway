@@ -1,7 +1,6 @@
 import pytest
 from fastapi import HTTPException
 
-from app.core.key_vault import SecretResolutionError
 from app.models.sql_server import SQLServer
 from app.services.sql_server_discovery_service import SQLServerDiscoveryService
 
@@ -57,24 +56,6 @@ def make_service(sql_server: SQLServer, factory) -> SQLServerDiscoveryService:
     service.table_repo = FakeTableRepo()
     return service
 
-
-def test_sync_all_returns_502_when_key_vault_secret_resolution_fails():
-    sql_server = make_sql_server()
-    factory = RaisingFactory(
-        SecretResolutionError(
-            "Key Vault secret 'meridianretail-sql-app-password' was not found "
-            "in the vault. Verify the secret reference matches the secret's "
-            "name exactly."
-        )
-    )
-    service = make_service(sql_server, factory)
-
-    with pytest.raises(HTTPException) as exc_info:
-        service.sync_all(sql_server.id)
-
-    assert exc_info.value.status_code == 502
-    assert "Key Vault secret resolution failed" in exc_info.value.detail
-    assert "not found" in exc_info.value.detail
 
 
 def test_sync_all_returns_400_for_misconfigured_sql_server():
