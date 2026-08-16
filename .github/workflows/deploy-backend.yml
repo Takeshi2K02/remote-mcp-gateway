@@ -3,8 +3,9 @@
 #
 # Triggers on every push to `main`, but ONLY when files inside backend/ change.
 # Authentication uses OIDC federated identity (no secrets stored in the repo).
-# Build and deploy happen in a single job on the same runner to avoid consuming
-# GitHub artifact storage quota (no upload-artifact / download-artifact used).
+# Deploys via `az webapp deploy --type zip` (Kudu ZIP deploy), which triggers
+# Oryx's server-side build (pip install) when SCM_DO_BUILD_DURING_DEPLOYMENT=true.
+# No upload-artifact / download-artifact used — no GitHub artifact storage quota.
 # ──────────────────────────────────────────────────────────────────────────────
 
 name: Deploy Backend to Azure App Service
@@ -46,14 +47,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Set up Python 3.12 ──────────────────────────────────────────────
-      # Matches the runtime version used in Azure App Service for the backend.
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      # ── 3. Authenticate to Azure via OIDC ──────────────────────────────────
+      # ── 2. Authenticate to Azure via OIDC ──────────────────────────────────
       # Uses federated identity (OIDC) – no client secret or publish profile is
       # stored in this repo. The three secret values below must be added in
       # GitHub → Settings → Secrets and variables → Actions for this repository.
@@ -64,20 +58,37 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ── 4. Deploy to Azure App Service ─────────────────────────────────────
-      # Zips the backend/ folder and ships it to mcp-gateway-backend.
-      # No artifact upload/download is used – the zip is streamed directly
-      # from this runner to the App Service deployment endpoint.
+      # ── 3. Zip backend/ and deploy via az webapp deploy ────────────────────
+      # WHY az webapp deploy instead of azure/webapps-deploy@v3:
+      #   azure/webapps-deploy@v3 uses OneDeploy under the hood. OneDeploy
+      #   bypasses the Kudu SCM site entirely and deploys straight to /home/site
+      #   /wwwroot, which means SCM_DO_BUILD_DURING_DEPLOYMENT=true is ignored —
+      #   Oryx never runs, requirements.txt is never pip-installed, and the app
+      #   crashes with ModuleNotFoundError (uvicorn, fastapi, etc. not found).
       #
-      # Dependencies are NOT pre-installed here. The App Service Oryx build
-      # system handles `pip install -r requirements.txt` server-side after
-      # the zip lands, because SCM_DO_BUILD_DURING_DEPLOYMENT=true is set as
-      # an App Setting. This ensures packages are installed into the correct
-      # venv that App Service's Python runtime actually uses — installing
-      # them client-side to .python_packages/lib/site-packages was the root
-      # cause of ModuleNotFoundError at runtime (that path is not on sys.path).
-      - name: Deploy to Azure App Service
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: mcp-gateway-backend
-          package: './backend'
+      #   `az webapp deploy --type zip` pushes through the Kudu ZIP deploy
+      #   endpoint (/api/zipdeploy). Kudu reads SCM_DO_BUILD_DURING_DEPLOYMENT
+      #   and, when true, hands the zip to Oryx, which runs `pip install -r
+      #   requirements.txt` into the antenv virtual environment that App
+      #   Service's Python launcher activates at startup. This is the correct
+      #   and supported path for SCM-based builds on App Service Linux.
+      #
+      # No pre-installed packages are shipped in the zip — Oryx owns that step.
+      # No upload-artifact / download-artifact are used anywhere in this job.
+      - name: Zip and deploy backend to Azure App Service
+        run: |
+          # Create a zip of the backend/ folder contents (not the folder itself,
+          # so that requirements.txt is at the root of the zip as Oryx expects).
+          cd backend
+          zip -r ../backend-deploy.zip . --exclude '*.pyc' --exclude '__pycache__/*' \
+            --exclude '.venv/*' --exclude '.env' --exclude '.pytest_cache/*' \
+            --exclude '.benchmarks/*'
+          cd ..
+
+          # Deploy via Kudu ZIP endpoint — this is what respects
+          # SCM_DO_BUILD_DURING_DEPLOYMENT and triggers Oryx's pip install.
+          az webapp deploy \
+            --resource-group rg-mcp-gateway \
+            --name mcp-gateway-backend \
+            --src-path backend-deploy.zip \
+            --type zip
