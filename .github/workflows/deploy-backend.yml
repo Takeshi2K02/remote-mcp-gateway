@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   deploy:
-    name: Build & Deploy Backend
+    name: Deploy Backend
     runs-on: ubuntu-latest
 
     steps:
@@ -53,21 +53,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      # ── 3. Install dependencies ─────────────────────────────────────────────
-      # Installs all packages from backend/requirements.txt into the
-      # backend/.python_packages/lib/site-packages directory. Azure App Service
-      # (Linux) automatically detects packages in this path when the zip is
-      # deployed, so no startup command changes are required.
-      #
-      # Using --target keeps packages scoped to the deployment folder rather
-      # than the runner's global site-packages, making the zip self-contained.
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt \
-            --target backend/.python_packages/lib/site-packages
-
-      # ── 4. Authenticate to Azure via OIDC ──────────────────────────────────
+      # ── 3. Authenticate to Azure via OIDC ──────────────────────────────────
       # Uses federated identity (OIDC) – no client secret or publish profile is
       # stored in this repo. The three secret values below must be added in
       # GitHub → Settings → Secrets and variables → Actions for this repository.
@@ -78,10 +64,18 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ── 5. Deploy to Azure App Service ─────────────────────────────────────
-      # Points at the backend/ folder on the runner's filesystem directly.
-      # No artifact upload/download is used – the action zips the folder on
-      # the runner and pushes it straight to the App Service (mcp-gateway-backend).
+      # ── 4. Deploy to Azure App Service ─────────────────────────────────────
+      # Zips the backend/ folder and ships it to mcp-gateway-backend.
+      # No artifact upload/download is used – the zip is streamed directly
+      # from this runner to the App Service deployment endpoint.
+      #
+      # Dependencies are NOT pre-installed here. The App Service Oryx build
+      # system handles `pip install -r requirements.txt` server-side after
+      # the zip lands, because SCM_DO_BUILD_DURING_DEPLOYMENT=true is set as
+      # an App Setting. This ensures packages are installed into the correct
+      # venv that App Service's Python runtime actually uses — installing
+      # them client-side to .python_packages/lib/site-packages was the root
+      # cause of ModuleNotFoundError at runtime (that path is not on sys.path).
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
         with:
