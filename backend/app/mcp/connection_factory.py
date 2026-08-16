@@ -1,7 +1,6 @@
 from urllib.parse import quote_plus
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
-from app.core.key_vault import get_secret
 from app.models.database import Database
 from app.models.sql_server import SQLServer
 
@@ -21,11 +20,10 @@ class SQLConnectionFactory:
 
         if not sql_server.username or not sql_server.secret_reference:
             raise ValueError(
-                "SQL username and secret_reference are required."
+                "SQL username and secret_reference (password) are required."
             )
 
-        # secret_reference stores the Key Vault secret name, not the password.
-        password = get_secret(sql_server.secret_reference)
+        password = sql_server.secret_reference
 
         connection_url = (
             "mssql+pyodbc://"
@@ -59,10 +57,10 @@ class SQLConnectionFactory:
 
         if not sql_server.username or not sql_server.secret_reference:
             raise ValueError(
-                "SQL username and secret_reference are required."
+                "SQL username and secret_reference (password) are required."
             )
 
-        password = get_secret(sql_server.secret_reference)
+        password = sql_server.secret_reference
 
         # Connecting to master; no catalog database specified.
         connection_url = (

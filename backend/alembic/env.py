@@ -1,6 +1,5 @@
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import create_engine, pool
 from alembic import context
 import app.models
 from app.db.database import Base, connection_url
@@ -9,7 +8,10 @@ from app.db.database import Base, connection_url
 # access to the values within the .ini file in use.
 config = context.config
 
-config.set_main_option("sqlalchemy.url", connection_url)
+# NOTE: Do NOT pass connection_url through config.set_main_option — the URL
+# contains percent-encoded characters (e.g. %40) that configparser mistakes
+# for interpolation tokens, raising a ValueError. We inject the URL directly
+# into the engine instead (see run_migrations_online below).
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -59,12 +61,12 @@ def run_migrations_online() -> None:
     In this scenario we need to create an Engine
     and associate a connection with the context.
 
+    Build the engine directly from connection_url (a plain string) rather than
+    routing it through Alembic's config.set_main_option / engine_from_config,
+    which would pass it through configparser and misinterpret percent-encoded
+    characters in the password as interpolation tokens.
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    connectable = create_engine(connection_url, poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
         context.configure(
