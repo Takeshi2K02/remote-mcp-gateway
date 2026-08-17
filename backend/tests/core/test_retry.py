@@ -79,3 +79,51 @@ def test_retry_succeeds_immediately_without_sleeping():
 
     assert result == "ok"
     assert sleeps == []
+
+
+class FakeDBAPIOperationalError(Exception):
+    """Stands in for pyodbc.OperationalError, which is not a subclass of
+    SQLAlchemy's OperationalError and so is invisible to the default
+    retry_on."""
+
+
+def test_retry_on_override_catches_non_sqlalchemy_errors():
+    """The engine's do_connect hook sees raw DBAPI errors, below the layer
+    where SQLAlchemy wraps them."""
+    calls = {"count": 0}
+
+    def flaky():
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise FakeDBAPIOperationalError("HYT00 Login timeout expired")
+        return "connected"
+
+    result = retry_on_operational_error(
+        flaky,
+        attempts=3,
+        initial_backoff_seconds=0.1,
+        sleep_fn=lambda _seconds: None,
+        retry_on=(FakeDBAPIOperationalError,),
+    )
+
+    assert result == "connected"
+    assert calls["count"] == 3
+
+
+def test_retry_on_override_still_excludes_other_error_types():
+    """A narrow retry_on must let permanent faults propagate immediately
+    instead of burning the retry budget."""
+    calls = {"count": 0}
+
+    def raises_other():
+        calls["count"] += 1
+        raise ValueError("bad password")
+
+    with pytest.raises(ValueError):
+        retry_on_operational_error(
+            raises_other,
+            sleep_fn=lambda _seconds: None,
+            retry_on=(FakeDBAPIOperationalError,),
+        )
+
+    assert calls["count"] == 1
