@@ -25,7 +25,12 @@ from app.api.users import router as users_router
 from app.auth.middleware import MCPAuthMiddleware
 from app.core.config import get_settings
 from app.core.exceptions import unhandled_exception_handler
+from app.core.logging import configure_logging
 from app.db.database import get_db
+
+# Before anything else that might log. Runs in every gunicorn worker (each
+# imports this module) and is idempotent, so repeated calls are harmless.
+configure_logging()
 
 settings = get_settings()
 
