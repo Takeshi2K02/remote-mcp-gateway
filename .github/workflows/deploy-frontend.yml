@@ -74,7 +74,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      # ── 3. Lint ────────────────────────────────────────────────────────────
+      # ── 3. Install dependencies ────────────────────────────────────────────
       # `npm ci` (not `npm install`) installs exactly what's in
       # package-lock.json and never modifies it — the reproducible choice for
       # CI. There is no test framework in this project yet, so lint is the
@@ -87,7 +87,11 @@ jobs:
       # correctness check, and one that cannot use the real API URL (that
       # value lives in App Settings, not here). A failed Oryx build fails the
       # deploy step below, so the signal is not lost.
-      #
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # ── 4. Lint ────────────────────────────────────────────────────────────
       # TEMPORARY: continue-on-error is set because the app carries 27
       # pre-existing ESLint errors (@typescript-eslint/no-unused-vars,
       # react/no-unescaped-entities, react-hooks/set-state-in-effect and
@@ -99,14 +103,16 @@ jobs:
       #
       # Remove continue-on-error once those 27 errors are fixed separately,
       # so lint goes back to being a real pre-deploy gate.
-      - name: Install dependencies and lint
+      #
+      # This is deliberately a separate step from `npm ci` above: the install
+      # must stay blocking, so a corrupted package-lock.json fails the run
+      # loudly instead of being swallowed by lint's tolerance.
+      - name: Lint
         working-directory: frontend
         continue-on-error: true
-        run: |
-          npm ci
-          npm run lint
+        run: npm run lint
 
-      # ── 4. Authenticate to Azure via OIDC ──────────────────────────────────
+      # ── 7. Authenticate to Azure via OIDC ──────────────────────────────────
       # Uses federated identity (OIDC) — no client secret or publish profile is
       # stored in this repo. Reuses the same service principal as the backend
       # workflow, so no new secrets are required.
@@ -117,7 +123,7 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ── 5. Zip and deploy frontend to Azure App Service ────────────────────
+      # ── 7. Zip and deploy frontend to Azure App Service ────────────────────
       # WHY az webapp deploy instead of azure/webapps-deploy@v3:
       #   azure/webapps-deploy@v3 uses OneDeploy under the hood. OneDeploy
       #   bypasses the Kudu SCM site entirely and deploys straight to /home/
@@ -166,13 +172,24 @@ jobs:
             --track-status false \
             --timeout 900000
 
-      # ── 6. Verify the site actually came up ────────────────────────────────
+      # ── 7. Verify the site actually came up ────────────────────────────────
       # Replaces the CLI's built-in startup polling removed above. The
       # hostname is read back from the web app rather than hardcoded, so the
       # generated *.azurewebsites.net suffix can never drift out of sync with
-      # this file. Any 2xx/3xx counts as up: the root path may redirect to
-      # /login depending on auth state, and that still proves Next.js is
-      # serving.
+      # this file.
+      #
+      # A status code alone is NOT a sufficient signal here. An App Service
+      # with nothing deployed serves a default "your web app is running and
+      # waiting for your content" placeholder, and that placeholder returns
+      # HTTP 200 — so a status-only check reports success for a site that is
+      # serving none of our code. That false positive has already happened on
+      # this workflow once.
+      #
+      # So the body is checked for "/_next/", the path prefix Next.js uses for
+      # every build asset it emits. Any real page rendered by this app
+      # references it; the App Service placeholder never does. Redirects are
+      # followed (-L) because / may redirect to /login depending on auth
+      # state, and the marker lives on the page we land on, not the 302.
       - name: Health check
         run: |
           HOST=$(az webapp show \
@@ -183,18 +200,26 @@ jobs:
           echo "Polling ${URL}"
 
           for i in $(seq 1 40); do
-            CODE=$(curl -s -o /tmp/index.html -w '%{http_code}' --max-time 30 "$URL" || echo 000)
-            case "$CODE" in
-              2*|3*)
-                echo "Healthy after ${i} attempt(s): HTTP ${CODE}"
-                exit 0
-                ;;
-            esac
-            echo "Attempt ${i}/40: HTTP ${CODE} — retrying in 15s"
+            CODE=$(curl -sL -o /tmp/index.html -w '%{http_code}' --max-time 30 "$URL" || echo 000)
+
+            if [ "$CODE" = "200" ] && grep -q '/_next/' /tmp/index.html; then
+              echo "Healthy after ${i} attempt(s): HTTP ${CODE}, Next.js assets present."
+              exit 0
+            fi
+
+            if [ "$CODE" = "200" ]; then
+              # Responding, but with something that is not our app — almost
+              # always the App Service placeholder, which means Oryx did not
+              # build (check SCM_DO_BUILD_DURING_DEPLOYMENT) or the app is
+              # not yet started.
+              echo "Attempt ${i}/40: HTTP 200 but no /_next/ marker — not our app yet."
+            else
+              echo "Attempt ${i}/40: HTTP ${CODE}"
+            fi
             sleep 15
           done
 
-          echo "::error::Site did not return a 2xx/3xx from ${URL} within 10 minutes."
-          echo "Last response body (first 500 bytes):"
+          echo "::error::${URL} did not serve Next.js output within 10 minutes."
+          echo "Last response was HTTP ${CODE}. First 500 bytes of body:"
           head -c 500 /tmp/index.html || true
           exit 1
