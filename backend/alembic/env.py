@@ -1,16 +1,22 @@
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config
+from sqlalchemy import create_engine
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy import pool
 from alembic import context
 import app.models  # noqa: F401 - registers all models on Base.metadata for autogenerate
-from app.core.retry import retry_on_operational_error
+from app.core.retry import is_transient_database_error, retry_on_operational_error
 from app.db.database import Base, connection_url
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
-config.set_main_option("sqlalchemy.url", connection_url)
+# NOTE: Do NOT pass connection_url through config.set_main_option — the URL
+# contains percent-encoded characters (e.g. %40 for @ in the password) that
+# configparser mistakes for interpolation tokens, raising an
+# InterpolationSyntaxError before any migration runs. The URL is injected
+# directly into the engine instead (see run_migrations_online below), and
+# read straight from the module in offline mode.
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically. Skipped when migrations run
@@ -46,9 +52,11 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    # Read from the module rather than config.get_main_option: with
+    # set_main_option removed (see above), "sqlalchemy.url" is unset in the
+    # .ini and would come back None.
     context.configure(
-        url=url,
+        url=connection_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -64,18 +72,29 @@ def run_migrations_online() -> None:
     In this scenario we need to create an Engine
     and associate a connection with the context.
 
+    Build the engine directly from connection_url (a plain string) rather
+    than routing it through Alembic's config.set_main_option /
+    engine_from_config, which would pass it through configparser and
+    misinterpret percent-encoded characters in the password as interpolation
+    tokens.
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    connectable = create_engine(connection_url, poolclass=pool.NullPool)
 
     # The metadata DB runs on Azure SQL's serverless Free Limit tier, which
     # cannot be taken off auto-pause. Retry the initial connect so a resume
-    # delay (login timeout on the first attempt) doesn't fail the whole
-    # migration job.
-    connection = retry_on_operational_error(connectable.connect)
+    # doesn't fail the whole migration job.
+    #
+    # This engine is built here rather than shared with app.db.database, so
+    # it does not carry that engine's do_connect hook and needs the same
+    # widening applied explicitly. A resume rejection (40613) reaches this
+    # layer wrapped as sqlalchemy.exc.DBAPIError, which is the parent of
+    # OperationalError rather than a subclass, so the default retry_on would
+    # not match it.
+    connection = retry_on_operational_error(
+        connectable.connect,
+        retry_on=(DBAPIError,),
+        should_retry=is_transient_database_error,
+    )
     with connection:
         context.configure(
             connection=connection, target_metadata=target_metadata
