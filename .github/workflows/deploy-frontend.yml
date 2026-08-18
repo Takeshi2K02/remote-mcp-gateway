@@ -16,9 +16,10 @@
 #   That is a memory ceiling, not something a longer timeout fixes.
 #
 #   So the build moves to the runner, which has the resources for it, and
-#   App Service receives finished output. Under publish-profile deploy this is
-#   enforced by the transport rather than by an app setting: OneDeploy never
-#   invokes Oryx at all (see step 8).
+#   App Service receives finished output. SCM_DO_BUILD_DURING_DEPLOYMENT must
+#   be FALSE on the web app for this to work — that is true under OneDeploy
+#   too, which honours the setting exactly as `az webapp deploy` does. See the
+#   note on the deploy step.
 # ──────────────────────────────────────────────────────────────────────────────
 
 name: Deploy Frontend to Azure App Service
@@ -197,13 +198,23 @@ jobs:
       #     --resource-type basicPublishingCredentialsPolicies --name scm \
       #     --parent sites/mcp-gateway-frontend --set properties.allow=true
       #
-      # This action deploys through OneDeploy, which writes straight to
-      # /home/site/wwwroot and never invokes Oryx. That is exactly what we want
-      # for the frontend — the build already happened on the runner — and it
-      # means SCM_DO_BUILD_DURING_DEPLOYMENT has no effect on this path either
-      # way. (Contrast the backend workflow, which must keep using
-      # `az webapp deploy --type zip` precisely BECAUSE it needs Oryx to run
-      # pip install server-side.)
+      # REQUIREMENT: SCM_DO_BUILD_DURING_DEPLOYMENT must be FALSE on the web
+      # app. This action deploys through OneDeploy (Kudu's /api/publish), and
+      # OneDeploy DOES honour that setting — an earlier version of this comment
+      # claimed it did not, which was wrong. Per Microsoft's deploy-zip doc:
+      # "By default, the deployment engine assumes that a ZIP package is ready
+      # to run as-is and doesn't run any build automation. To enable the same
+      # build automation used in a Git deployment, set the
+      # SCM_DO_BUILD_DURING_DEPLOYMENT app setting."
+      #
+      # With it TRUE, Oryx runs `npm install` + `next build` against
+      # .next/standalone, which has no app/ or pages/ — it is already-built
+      # runtime output — and the deploy fails. Leave it false and OneDeploy
+      # extracts the package as-is, which is what we want.
+      #
+      # (Contrast the backend workflow, which must keep using
+      # `az webapp deploy --type zip` with the setting TRUE, precisely BECAUSE
+      # it needs Oryx to run pip install server-side.)
       #
       # Deploying content does not touch siteConfig — the startup command,
       # app settings and runtime stack set out-of-band all survive a deploy.
