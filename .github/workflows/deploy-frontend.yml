@@ -127,7 +127,37 @@ jobs:
           NEXT_PUBLIC_API_BASE_URL: 'https://mcp-gateway-backend-ezfydqhagdghced2.southeastasia-01.azurewebsites.net'
         run: npm run build
 
-      # ── 6. Authenticate to Azure via OIDC ──────────────────────────────────
+      # ── 6. Drop devDependencies from the deploy payload ────────────────────
+      # The first runner-built deploy failed with HTTP_502 from Kudu on a
+      # 196 MB package (734 MB of unpruned node_modules). Nothing in
+      # devDependencies is needed to serve: `next start` runs the already-built
+      # output in .next, so eslint, tailwind, the @types packages and the
+      # TypeScript compiler are all dead weight once the Build step above has
+      # finished.
+      #
+      # Safe with a TypeScript next.config.ts, which was the open question that
+      # held this back. Next does not use the `typescript` package to read it:
+      # transpile-config.js loads Next's own bundled SWC bindings
+      # (next/dist/build/swc) and calls bindings.transform with
+      # jsc.parser.syntax = 'typescript'. Verified empirically by making
+      # `typescript` unresolvable via Module._resolveFilename and loading this
+      # exact next.config.ts through transpileConfig: it resolved to
+      # {"devIndicators":false} without ever attempting to require typescript.
+      #
+      # Runs AFTER Build on purpose — the build needs the dev toolchain.
+      - name: Prune devDependencies
+        working-directory: frontend
+        run: |
+          echo "Before prune:"
+          du -sh node_modules
+
+          npm prune --omit=dev
+
+          echo "After prune:"
+          du -sh node_modules
+          du -sh .next public 2>/dev/null || true
+
+      # ── 7. Authenticate to Azure via OIDC ──────────────────────────────────
       # Federated identity — no client secret or publish profile in this repo.
       # Reuses the same service principal as the backend workflow, so no new
       # secrets are required.
@@ -138,7 +168,7 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ── 7. Zip the BUILT output and deploy ─────────────────────────────────
+      # ── 8. Zip the BUILT output and deploy ─────────────────────────────────
       # Same transport as before (az webapp deploy --type zip); what changed is
       # the payload — finished build output rather than source for Oryx to
       # build.
@@ -183,7 +213,7 @@ jobs:
             --track-status false \
             --timeout 900000
 
-      # ── 8. Verify the site actually came up ────────────────────────────────
+      # ── 9. Verify the site actually came up ────────────────────────────────
       # The hostname is read back from the web app rather than hardcoded, so
       # the generated *.azurewebsites.net suffix can never drift out of sync
       # with this file.
