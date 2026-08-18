@@ -1,16 +1,22 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # Deploy Frontend – Azure App Service (mcp-gateway-frontend)
 #
-# Mirrors deploy-backend.yml. Triggers on every push to `main`, but ONLY when
-# files inside frontend/ change. Authentication uses OIDC federated identity
-# (no secrets stored in the repo). Deploys via `az webapp deploy --type zip`
-# (Kudu ZIP deploy), which triggers Oryx's server-side build (npm install +
-# npm run build) when SCM_DO_BUILD_DURING_DEPLOYMENT=true.
+# Triggers on every push to `main`, but ONLY when files inside frontend/ change.
+# Authentication uses OIDC federated identity (no secrets stored in the repo).
 # No upload-artifact / download-artifact used — no GitHub artifact storage quota.
 #
-# Replaces the old frontend-ci.yml, which built a Docker image, pushed it to
-# Azure Container Registry and updated a Container App. None of that
-# infrastructure is used any more; the frontend now runs on App Service.
+# WHY THIS BUILDS ON THE RUNNER (and the backend does not):
+#   The backend lets Oryx build server-side, because `pip install` is cheap.
+#   The frontend cannot. On the shared B1 plan (1 core, 1.75 GB RAM) a
+#   server-side `next build` took ~12 minutes and then died — not in the build
+#   itself, which succeeded (compiled in 71s, TypeScript in 52s, all 14 routes
+#   generated), but in Oryx's post-build "Zipping existing node_modules
+#   folder..." step, which stopped writing log output and was marked failed.
+#   That is a memory ceiling, not something a longer timeout fixes.
+#
+#   So the build moves to the runner, which has the resources for it, and
+#   App Service receives finished output. SCM_DO_BUILD_DURING_DEPLOYMENT must
+#   be FALSE on the web app for this to work — see the deployment notes.
 # ──────────────────────────────────────────────────────────────────────────────
 
 name: Deploy Frontend to Azure App Service
@@ -22,10 +28,10 @@ name: Deploy Frontend to Azure App Service
 # satisfy the filter.
 #
 # workflow_dispatch lets you kick off a manual run from the GitHub Actions UI
-# without pushing any code — useful when only this file changes (path filter
-# changes don't self-trigger the commit that introduces them) or when you
-# want to force a clean re-deploy on demand. It is also the only way to
-# re-run the build after changing NEXT_PUBLIC_API_BASE_URL (see below).
+# without pushing any code — useful when only this file changes, or to force a
+# clean re-deploy. It is also how you rebuild after changing the API base URL
+# below, since that value is compiled into the bundle rather than read at
+# runtime.
 on:
   push:
     branches:
@@ -57,16 +63,14 @@ jobs:
 
     steps:
       # ── 1. Check out source code ────────────────────────────────────────────
-      # Fetches the repository so subsequent steps can access the files.
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ── 2. Set up Node ─────────────────────────────────────────────────────
-      # Node 22 to match the App Service runtime (NODE|22-lts). This runner
-      # Node is used ONLY for the lint gate below — the deployed bundle is
-      # built by Oryx on App Service, not here, so a version skew between
-      # runner and App Service would produce a build that never ships.
-      # Pinning both to 22 keeps the gate honest.
+      # Node 22 to match the App Service runtime (NODE|22-lts). This is now
+      # load-bearing rather than cosmetic: the bundle shipped to Azure is
+      # produced HERE, so a version skew between runner and App Service would
+      # mean running artifacts built by a different Node than serves them.
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -77,16 +81,8 @@ jobs:
       # ── 3. Install dependencies ────────────────────────────────────────────
       # `npm ci` (not `npm install`) installs exactly what's in
       # package-lock.json and never modifies it — the reproducible choice for
-      # CI. There is no test framework in this project yet, so lint is the
-      # only pre-deploy verification available.
-      #
-      # NOTE: no `npm run build` step here. The old workflow built twice —
-      # once as a CI check with a placeholder NEXT_PUBLIC_API_BASE_URL, then
-      # again inside the Docker image with the real one. Under Oryx the real
-      # build happens on App Service, so a runner build would only be a
-      # correctness check, and one that cannot use the real API URL (that
-      # value lives in App Settings, not here). A failed Oryx build fails the
-      # deploy step below, so the signal is not lost.
+      # CI. Blocking on purpose: a corrupted lockfile must fail the run rather
+      # than be swallowed by the lint step's tolerance below.
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
@@ -96,26 +92,45 @@ jobs:
       # pre-existing ESLint errors (@typescript-eslint/no-unused-vars,
       # react/no-unescaped-entities, react-hooks/set-state-in-effect and
       # others) that predate this deployment work and are unrelated to it.
-      # Leaving the gate blocking would red-line every deploy for reasons
-      # that have nothing to do with whether the deploy is sound. The step
-      # still runs and its output is still visible in the run log, so the
-      # errors stay on the radar rather than being deleted.
+      # Leaving the gate blocking would red-line every deploy for reasons that
+      # have nothing to do with whether the deploy is sound. The step still
+      # runs and its output stays in the run log.
       #
-      # Remove continue-on-error once those 27 errors are fixed separately,
-      # so lint goes back to being a real pre-deploy gate.
-      #
-      # This is deliberately a separate step from `npm ci` above: the install
-      # must stay blocking, so a corrupted package-lock.json fails the run
-      # loudly instead of being swallowed by lint's tolerance.
+      # Remove continue-on-error once those 27 errors are fixed separately, so
+      # lint goes back to being a real pre-deploy gate.
       - name: Lint
         working-directory: frontend
         continue-on-error: true
         run: npm run lint
 
-      # ── 7. Authenticate to Azure via OIDC ──────────────────────────────────
-      # Uses federated identity (OIDC) — no client secret or publish profile is
-      # stored in this repo. Reuses the same service principal as the backend
-      # workflow, so no new secrets are required.
+      # ── 5. Build ───────────────────────────────────────────────────────────
+      # This is the build that ships. Unlike the old pipeline, there is no
+      # second build later with different inputs — what is produced here is
+      # exactly what App Service serves.
+      #
+      # NEXT_PUBLIC_API_BASE_URL is compiled into the client JS bundle by
+      # Next at build time; it is NOT read at runtime. Because the build now
+      # happens on this runner, the value belongs here as a step env var. It
+      # used to have to live in App Settings purely because Oryx built
+      # server-side and could only see the environment Azure gave it.
+      #
+      # Consequences worth knowing: changing this URL requires re-running this
+      # workflow (a restart or an App Setting edit will do nothing), and
+      # lib/config/env.ts throws when the variable is missing, so a typo here
+      # fails the build loudly rather than shipping a broken bundle.
+      #
+      # Note this is a BLOCKING step. A build failure must stop the deploy —
+      # otherwise we would ship the previous build's stale output.
+      - name: Build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_BASE_URL: 'https://mcp-gateway-backend-ezfydqhagdghced2.southeastasia-01.azurewebsites.net'
+        run: npm run build
+
+      # ── 6. Authenticate to Azure via OIDC ──────────────────────────────────
+      # Federated identity — no client secret or publish profile in this repo.
+      # Reuses the same service principal as the backend workflow, so no new
+      # secrets are required.
       - name: Log in to Azure (OIDC)
         uses: azure/login@v2
         with:
@@ -123,73 +138,67 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ── 7. Zip and deploy frontend to Azure App Service ────────────────────
-      # WHY az webapp deploy instead of azure/webapps-deploy@v3:
-      #   azure/webapps-deploy@v3 uses OneDeploy under the hood. OneDeploy
-      #   bypasses the Kudu SCM site entirely and deploys straight to /home/
-      #   site/wwwroot, which means SCM_DO_BUILD_DURING_DEPLOYMENT=true is
-      #   ignored — Oryx never runs, node_modules is never installed, `next
-      #   build` never happens, and the site serves nothing runnable.
+      # ── 7. Zip the BUILT output and deploy ─────────────────────────────────
+      # Same transport as before (az webapp deploy --type zip); what changed is
+      # the payload — finished build output rather than source for Oryx to
+      # build.
       #
-      #   `az webapp deploy --type zip` pushes through the Kudu ZIP deploy
-      #   endpoint (/api/zipdeploy). Kudu reads SCM_DO_BUILD_DURING_DEPLOYMENT
-      #   and, when true, hands the zip to Oryx, which runs `npm install` and
-      #   `npm run build`. This is the correct and supported path for
-      #   SCM-based builds on App Service Linux.
+      # node_modules IS included, deliberately. With
+      # SCM_DO_BUILD_DURING_DEPLOYMENT=false nothing installs dependencies on
+      # the Azure side, and `next start` needs the `next` package present to
+      # run at all. This makes the upload large; see the deployment notes for
+      # the pruning option and what has to be verified before taking it.
       #
-      # WHY --track-status false:
-      #   `az webapp deploy` polls the site's runtime startup status for up to
-      #   ~10 minutes after deploying and fails with "the site failed to start
-      #   within 10 mins" if its own probe hasn't gone green yet — even when
-      #   the app is in fact serving. That flakiness is what this flag
-      #   disables. The Kudu/Oryx wait is untouched, so a genuine build
-      #   failure (a TypeScript error, a missing dependency) still fails this
-      #   step. --timeout gives that build a 15 minute budget; a Next.js
-      #   production build is slower than a pip install.
+      # .next/cache and .next/dev are excluded: build cache and dev-server
+      # scratch, neither needed to serve, and .next/dev in particular is
+      # hundreds of megabytes on a machine that has run `next dev`.
       #
-      # node_modules and .next are excluded from the zip: Oryx installs and
-      # builds server-side, and shipping a runner-built node_modules would
-      # both bloat the upload and risk native modules compiled for the wrong
-      # platform overwriting what Oryx produces.
-      - name: Zip and deploy frontend to Azure App Service
+      # --track-status false is kept: az webapp deploy otherwise polls the
+      # site's runtime startup for ~10 minutes and fails even when the deploy
+      # succeeded. The health check below is the readiness signal instead.
+      - name: Zip built output and deploy to Azure App Service
+        working-directory: frontend
         run: |
+          echo "Build output size:"
+          du -sh .next node_modules public 2>/dev/null || true
+
           # Zip the frontend/ folder CONTENTS (not the folder itself), so
-          # package.json sits at the root of the zip where Oryx expects it.
-          cd frontend
-          zip -r ../frontend-deploy.zip . \
-            --exclude 'node_modules/*' \
-            --exclude '.next/*' \
+          # package.json sits at the root of the zip where App Service expects
+          # it when it runs `npm start`.
+          zip -r -q ../frontend-deploy.zip . \
+            --exclude '.next/cache/*' \
+            --exclude '.next/dev/*' \
+            --exclude '.git/*' \
             --exclude '.env' \
-            --exclude '.env.local' \
-            --exclude '.git/*'
-          cd ..
+            --exclude '.env.local'
+
+          echo "Deploy package size:"
+          du -sh ../frontend-deploy.zip
 
           az webapp deploy \
             --resource-group rg-mcp-gateway \
             --name mcp-gateway-frontend \
-            --src-path frontend-deploy.zip \
+            --src-path ../frontend-deploy.zip \
             --type zip \
             --track-status false \
             --timeout 900000
 
-      # ── 7. Verify the site actually came up ────────────────────────────────
-      # Replaces the CLI's built-in startup polling removed above. The
-      # hostname is read back from the web app rather than hardcoded, so the
-      # generated *.azurewebsites.net suffix can never drift out of sync with
-      # this file.
+      # ── 8. Verify the site actually came up ────────────────────────────────
+      # The hostname is read back from the web app rather than hardcoded, so
+      # the generated *.azurewebsites.net suffix can never drift out of sync
+      # with this file.
       #
-      # A status code alone is NOT a sufficient signal here. An App Service
-      # with nothing deployed serves a default "your web app is running and
-      # waiting for your content" placeholder, and that placeholder returns
-      # HTTP 200 — so a status-only check reports success for a site that is
-      # serving none of our code. That false positive has already happened on
-      # this workflow once.
+      # A status code alone is NOT a sufficient signal. An App Service with
+      # nothing deployed serves a default "your web app is running and waiting
+      # for your content" placeholder that returns HTTP 200 — so a status-only
+      # check reports success for a site running none of our code. That false
+      # positive already happened on this workflow once.
       #
-      # So the body is checked for "/_next/", the path prefix Next.js uses for
-      # every build asset it emits. Any real page rendered by this app
-      # references it; the App Service placeholder never does. Redirects are
-      # followed (-L) because / may redirect to /login depending on auth
-      # state, and the marker lives on the page we land on, not the 302.
+      # So the body is checked for "/_next/", the path prefix Next.js emits for
+      # every build asset. Any real page from this app references it; the
+      # placeholder never does. Redirects are followed (-L) because / may
+      # redirect to /login depending on auth state, and the marker is on the
+      # page we land on rather than the 302.
       - name: Health check
         run: |
           HOST=$(az webapp show \
@@ -208,10 +217,9 @@ jobs:
             fi
 
             if [ "$CODE" = "200" ]; then
-              # Responding, but with something that is not our app — almost
-              # always the App Service placeholder, which means Oryx did not
-              # build (check SCM_DO_BUILD_DURING_DEPLOYMENT) or the app is
-              # not yet started.
+              # Responding, but not with our app — almost always the App
+              # Service placeholder, meaning the deployed tree is not being
+              # served or the app has not started.
               echo "Attempt ${i}/40: HTTP 200 but no /_next/ marker — not our app yet."
             else
               echo "Attempt ${i}/40: HTTP ${CODE}"
