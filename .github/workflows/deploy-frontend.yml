@@ -1,0 +1,187 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Deploy Frontend – Azure App Service (mcp-gateway-frontend)
+#
+# Mirrors deploy-backend.yml. Triggers on every push to `main`, but ONLY when
+# files inside frontend/ change. Authentication uses OIDC federated identity
+# (no secrets stored in the repo). Deploys via `az webapp deploy --type zip`
+# (Kudu ZIP deploy), which triggers Oryx's server-side build (npm install +
+# npm run build) when SCM_DO_BUILD_DURING_DEPLOYMENT=true.
+# No upload-artifact / download-artifact used — no GitHub artifact storage quota.
+#
+# Replaces the old frontend-ci.yml, which built a Docker image, pushed it to
+# Azure Container Registry and updated a Container App. None of that
+# infrastructure is used any more; the frontend now runs on App Service.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Deploy Frontend to Azure App Service
+
+# ── Trigger ───────────────────────────────────────────────────────────────────
+# Fires automatically on pushes to main when frontend/ files OR this workflow
+# file itself changes. The workflow file path is included so that edits to
+# the CI config re-deploy without requiring a separate frontend/ change to
+# satisfy the filter.
+#
+# workflow_dispatch lets you kick off a manual run from the GitHub Actions UI
+# without pushing any code — useful when only this file changes (path filter
+# changes don't self-trigger the commit that introduces them) or when you
+# want to force a clean re-deploy on demand. It is also the only way to
+# re-run the build after changing NEXT_PUBLIC_API_BASE_URL (see below).
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:
+
+# ── Concurrency ───────────────────────────────────────────────────────────────
+# If a new push arrives while a deploy is still running for the same branch,
+# cancel the older run instead of queuing it behind the new one.
+# This avoids piling up run history and prevents stale deployments.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ── Permissions ───────────────────────────────────────────────────────────────
+# `id-token: write` is required for OIDC token exchange with Azure.
+# `contents: read` is the minimum needed to check out the repository.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Check out source code ────────────────────────────────────────────
+      # Fetches the repository so subsequent steps can access the files.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Node ─────────────────────────────────────────────────────
+      # Node 22 to match the App Service runtime (NODE|22-lts). This runner
+      # Node is used ONLY for the lint gate below — the deployed bundle is
+      # built by Oryx on App Service, not here, so a version skew between
+      # runner and App Service would produce a build that never ships.
+      # Pinning both to 22 keeps the gate honest.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      # ── 3. Lint ────────────────────────────────────────────────────────────
+      # `npm ci` (not `npm install`) installs exactly what's in
+      # package-lock.json and never modifies it — the reproducible choice for
+      # CI. There is no test framework in this project yet, so lint is the
+      # only pre-deploy verification available.
+      #
+      # NOTE: no `npm run build` step here. The old workflow built twice —
+      # once as a CI check with a placeholder NEXT_PUBLIC_API_BASE_URL, then
+      # again inside the Docker image with the real one. Under Oryx the real
+      # build happens on App Service, so a runner build would only be a
+      # correctness check, and one that cannot use the real API URL (that
+      # value lives in App Settings, not here). A failed Oryx build fails the
+      # deploy step below, so the signal is not lost.
+      - name: Install dependencies and lint
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+
+      # ── 4. Authenticate to Azure via OIDC ──────────────────────────────────
+      # Uses federated identity (OIDC) — no client secret or publish profile is
+      # stored in this repo. Reuses the same service principal as the backend
+      # workflow, so no new secrets are required.
+      - name: Log in to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ── 5. Zip and deploy frontend to Azure App Service ────────────────────
+      # WHY az webapp deploy instead of azure/webapps-deploy@v3:
+      #   azure/webapps-deploy@v3 uses OneDeploy under the hood. OneDeploy
+      #   bypasses the Kudu SCM site entirely and deploys straight to /home/
+      #   site/wwwroot, which means SCM_DO_BUILD_DURING_DEPLOYMENT=true is
+      #   ignored — Oryx never runs, node_modules is never installed, `next
+      #   build` never happens, and the site serves nothing runnable.
+      #
+      #   `az webapp deploy --type zip` pushes through the Kudu ZIP deploy
+      #   endpoint (/api/zipdeploy). Kudu reads SCM_DO_BUILD_DURING_DEPLOYMENT
+      #   and, when true, hands the zip to Oryx, which runs `npm install` and
+      #   `npm run build`. This is the correct and supported path for
+      #   SCM-based builds on App Service Linux.
+      #
+      # WHY --track-status false:
+      #   `az webapp deploy` polls the site's runtime startup status for up to
+      #   ~10 minutes after deploying and fails with "the site failed to start
+      #   within 10 mins" if its own probe hasn't gone green yet — even when
+      #   the app is in fact serving. That flakiness is what this flag
+      #   disables. The Kudu/Oryx wait is untouched, so a genuine build
+      #   failure (a TypeScript error, a missing dependency) still fails this
+      #   step. --timeout gives that build a 15 minute budget; a Next.js
+      #   production build is slower than a pip install.
+      #
+      # node_modules and .next are excluded from the zip: Oryx installs and
+      # builds server-side, and shipping a runner-built node_modules would
+      # both bloat the upload and risk native modules compiled for the wrong
+      # platform overwriting what Oryx produces.
+      - name: Zip and deploy frontend to Azure App Service
+        run: |
+          # Zip the frontend/ folder CONTENTS (not the folder itself), so
+          # package.json sits at the root of the zip where Oryx expects it.
+          cd frontend
+          zip -r ../frontend-deploy.zip . \
+            --exclude 'node_modules/*' \
+            --exclude '.next/*' \
+            --exclude '.env' \
+            --exclude '.env.local' \
+            --exclude '.git/*'
+          cd ..
+
+          az webapp deploy \
+            --resource-group rg-mcp-gateway \
+            --name mcp-gateway-frontend \
+            --src-path frontend-deploy.zip \
+            --type zip \
+            --track-status false \
+            --timeout 900000
+
+      # ── 6. Verify the site actually came up ────────────────────────────────
+      # Replaces the CLI's built-in startup polling removed above. The
+      # hostname is read back from the web app rather than hardcoded, so the
+      # generated *.azurewebsites.net suffix can never drift out of sync with
+      # this file. Any 2xx/3xx counts as up: the root path may redirect to
+      # /login depending on auth state, and that still proves Next.js is
+      # serving.
+      - name: Health check
+        run: |
+          HOST=$(az webapp show \
+            --resource-group rg-mcp-gateway \
+            --name mcp-gateway-frontend \
+            --query defaultHostName -o tsv)
+          URL="https://${HOST}/"
+          echo "Polling ${URL}"
+
+          for i in $(seq 1 40); do
+            CODE=$(curl -s -o /tmp/index.html -w '%{http_code}' --max-time 30 "$URL" || echo 000)
+            case "$CODE" in
+              2*|3*)
+                echo "Healthy after ${i} attempt(s): HTTP ${CODE}"
+                exit 0
+                ;;
+            esac
+            echo "Attempt ${i}/40: HTTP ${CODE} — retrying in 15s"
+            sleep 15
+          done
+
+          echo "::error::Site did not return a 2xx/3xx from ${URL} within 10 minutes."
+          echo "Last response body (first 500 bytes):"
+          head -c 500 /tmp/index.html || true
+          exit 1
