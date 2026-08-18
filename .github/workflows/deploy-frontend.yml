@@ -127,37 +127,43 @@ jobs:
           NEXT_PUBLIC_API_BASE_URL: 'https://mcp-gateway-backend-ezfydqhagdghced2.southeastasia-01.azurewebsites.net'
         run: npm run build
 
-      # ── 6. Drop devDependencies from the deploy payload ────────────────────
-      # The first runner-built deploy failed with HTTP_502 from Kudu on a
-      # 196 MB package (734 MB of unpruned node_modules). Nothing in
-      # devDependencies is needed to serve: `next start` runs the already-built
-      # output in .next, so eslint, tailwind, the @types packages and the
-      # TypeScript compiler are all dead weight once the Build step above has
-      # finished.
-      #
-      # Safe with a TypeScript next.config.ts, which was the open question that
-      # held this back. Next does not use the `typescript` package to read it:
-      # transpile-config.js loads Next's own bundled SWC bindings
-      # (next/dist/build/swc) and calls bindings.transform with
-      # jsc.parser.syntax = 'typescript'. Verified empirically by making
-      # `typescript` unresolvable via Module._resolveFilename and loading this
-      # exact next.config.ts through transpileConfig: it resolved to
-      # {"devIndicators":false} without ever attempting to require typescript.
-      #
-      # Runs AFTER Build on purpose — the build needs the dev toolchain.
+      # ── 6. Drop devDependencies ────────────────────────────────────────────
+      # Kept because it is harmless and keeps the runner tree honest, but note
+      # it no longer affects the deploy payload: with standalone output the
+      # package is built from .next/standalone, which carries its own traced
+      # node_modules and is unaffected by pruning the root one.
       - name: Prune devDependencies
         working-directory: frontend
         run: |
-          echo "Before prune:"
+          echo "Root node_modules before prune:"
           du -sh node_modules
-
           npm prune --omit=dev
-
-          echo "After prune:"
+          echo "Root node_modules after prune:"
           du -sh node_modules
-          du -sh .next public 2>/dev/null || true
 
-      # ── 7. Authenticate to Azure via OIDC ──────────────────────────────────
+      # ── 7. Assemble the standalone deploy tree ─────────────────────────────
+      # `output: "standalone"` emits .next/standalone containing server.js,
+      # package.json and a node_modules holding only what Next traced as
+      # reachable at runtime. It deliberately does NOT include .next/static or
+      # public/, so both are copied in at the paths server.js expects.
+      #
+      # This is what shrinks the package. Measured locally: the previous
+      # whole-repo approach produced a 196 MB zip that Kudu rejected with
+      # HTTP_502; the standalone tree is ~38 MB and zips to ~12 MB.
+      - name: Assemble standalone output
+        working-directory: frontend
+        run: |
+          echo "── sizes before assembly ──"
+          du -sh node_modules .next .next/standalone .next/static public 2>/dev/null || true
+
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+
+          echo "── assembled deploy tree ──"
+          du -sh .next/standalone
+          ls -a .next/standalone
+
+      # ── 8. Authenticate to Azure via OIDC ──────────────────────────────────
       # Federated identity — no client secret or publish profile in this repo.
       # Reuses the same service principal as the backend workflow, so no new
       # secrets are required.
@@ -168,52 +174,31 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ── 8. Zip the BUILT output and deploy ─────────────────────────────────
-      # Same transport as before (az webapp deploy --type zip); what changed is
-      # the payload — finished build output rather than source for Oryx to
-      # build.
-      #
-      # node_modules IS included, deliberately. With
-      # SCM_DO_BUILD_DURING_DEPLOYMENT=false nothing installs dependencies on
-      # the Azure side, and `next start` needs the `next` package present to
-      # run at all. This makes the upload large; see the deployment notes for
-      # the pruning option and what has to be verified before taking it.
-      #
-      # .next/cache and .next/dev are excluded: build cache and dev-server
-      # scratch, neither needed to serve, and .next/dev in particular is
-      # hundreds of megabytes on a machine that has run `next dev`.
+      # ── 9. Zip the standalone tree and deploy ──────────────────────────────
+      # Zips the CONTENTS of .next/standalone, so server.js lands at the root
+      # of /home/site/wwwroot. The App Service startup command must be
+      # `node server.js` to match — `next start` does not run standalone
+      # output.
       #
       # --track-status false is kept: az webapp deploy otherwise polls the
       # site's runtime startup for ~10 minutes and fails even when the deploy
       # succeeded. The health check below is the readiness signal instead.
-      - name: Zip built output and deploy to Azure App Service
-        working-directory: frontend
+      - name: Zip standalone output and deploy to Azure App Service
+        working-directory: frontend/.next/standalone
         run: |
-          echo "Build output size:"
-          du -sh .next node_modules public 2>/dev/null || true
-
-          # Zip the frontend/ folder CONTENTS (not the folder itself), so
-          # package.json sits at the root of the zip where App Service expects
-          # it when it runs `npm start`.
-          zip -r -q ../frontend-deploy.zip . \
-            --exclude '.next/cache/*' \
-            --exclude '.next/dev/*' \
-            --exclude '.git/*' \
-            --exclude '.env' \
-            --exclude '.env.local'
-
+          zip -r -q "$RUNNER_TEMP/frontend-deploy.zip" .
           echo "Deploy package size:"
-          du -sh ../frontend-deploy.zip
+          du -sh "$RUNNER_TEMP/frontend-deploy.zip"
 
           az webapp deploy \
             --resource-group rg-mcp-gateway \
             --name mcp-gateway-frontend \
-            --src-path ../frontend-deploy.zip \
+            --src-path "$RUNNER_TEMP/frontend-deploy.zip" \
             --type zip \
             --track-status false \
             --timeout 900000
 
-      # ── 9. Verify the site actually came up ────────────────────────────────
+      # ── 10. Verify the site actually came up ───────────────────────────────
       # The hostname is read back from the web app rather than hardcoded, so
       # the generated *.azurewebsites.net suffix can never drift out of sync
       # with this file.
@@ -225,10 +210,9 @@ jobs:
       # positive already happened on this workflow once.
       #
       # So the body is checked for "/_next/", the path prefix Next.js emits for
-      # every build asset. Any real page from this app references it; the
-      # placeholder never does. Redirects are followed (-L) because / may
-      # redirect to /login depending on auth state, and the marker is on the
-      # page we land on rather than the 302.
+      # every build asset. Verified against a local run of this exact
+      # standalone server: the served page contains it. Redirects are followed
+      # (-L) because / may redirect to /login depending on auth state.
       - name: Health check
         run: |
           HOST=$(az webapp show \
@@ -247,9 +231,8 @@ jobs:
             fi
 
             if [ "$CODE" = "200" ]; then
-              # Responding, but not with our app — almost always the App
-              # Service placeholder, meaning the deployed tree is not being
-              # served or the app has not started.
+              # Responding, but not with our app — the App Service placeholder,
+              # or the startup command is not `node server.js`.
               echo "Attempt ${i}/40: HTTP 200 but no /_next/ marker — not our app yet."
             else
               echo "Attempt ${i}/40: HTTP ${CODE}"

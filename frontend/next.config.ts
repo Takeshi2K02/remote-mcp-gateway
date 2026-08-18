@@ -2,14 +2,20 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  // NOTE: do not add `output: "standalone"` here. It was removed when the
-  // frontend moved from Azure Container Apps to Azure App Service.
-  // Standalone mode emits .next/standalone/server.js and deliberately omits
-  // .next/static and public/, on the assumption that a container image
-  // copies them in alongside it. This app is no longer containerised — App
-  // Service runs `npm start` (`next start`), which does not support
-  // standalone output — so re-enabling it would deploy green and then serve
-  // a broken site.
+  // Emits .next/standalone: server.js plus a node_modules containing only the
+  // files Next traced as actually reachable at runtime. That is the whole
+  // point here — an unpruned deploy package was 196 MB and Kudu rejected it
+  // with HTTP_502.
+  //
+  // Standalone does NOT copy .next/static or public/ into that tree; the
+  // deploy workflow copies both in before zipping. It also means the entry
+  // point is `node server.js`, not `next start` — the App Service startup
+  // command must match.
+  //
+  // This was removed once before, when Oryx built server-side on App Service
+  // and the platform ran `next start`, which standalone does not support. The
+  // build now happens on the GitHub runner, so that conflict is gone.
+  output: "standalone",
 };
 
 export default nextConfig;
