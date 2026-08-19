@@ -21,11 +21,19 @@ def _redirect_error(
     error_desc: str,
     state: str | None,
 ) -> RedirectResponse:
-    """Send an OAuth error back to the client via its redirect_uri."""
+    """
+    Send an OAuth error back to the client via its redirect_uri.
+
+    status_code=303 is load bearing. RedirectResponse defaults to 307, which
+    PRESERVES the request method, and this helper is reachable from the consent
+    POST — so the browser would re-POST to the client's callback. Claude's
+    callback accepts GET and answers 405 Method Not Allowed to anything else.
+    303 See Other requires the follower to switch to GET.
+    """
     params = {"error": error_code, "error_description": error_desc}
     if state:
         params["state"] = state
-    return RedirectResponse(f"{redirect_uri}?{urlencode(params)}")
+    return RedirectResponse(f"{redirect_uri}?{urlencode(params)}", status_code=303)
 
 
 def _render_consent_page(
@@ -331,10 +339,13 @@ def authorize_consent(
             redirect_uri, "invalid_request", str(exc.detail), state
         )
 
+    # 303, not the RedirectResponse default of 307: a 307 preserves the method,
+    # so the browser would deliver this authorization response to the client's
+    # callback as a POST. See _redirect_error for the full explanation.
     params = {"code": code}
     if state:
         params["state"] = state
-    return RedirectResponse(f"{redirect_uri}?{urlencode(params)}")
+    return RedirectResponse(f"{redirect_uri}?{urlencode(params)}", status_code=303)
 
 
 @router.post("/token")

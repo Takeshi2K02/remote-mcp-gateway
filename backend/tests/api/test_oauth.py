@@ -176,7 +176,7 @@ def test_successful_authorization_flow_public(client, db_session):
     )
     # /oauth/authorize now renders a consent page instead of issuing a code.
     response = _grant_consent(client, response)
-    assert response.status_code == 307, response.text
+    assert response.status_code == 303, response.text
     redirect_url = response.headers["location"]
     assert "code=" in redirect_url
     assert "state=random_state" in redirect_url
@@ -233,7 +233,7 @@ def test_successful_authorization_flow_confidential(client, db_session):
         "/oauth/authorize", params=auth_params, follow_redirects=False
     )
     response = _grant_consent(client, response)
-    assert response.status_code == 307, response.text
+    assert response.status_code == 303, response.text
     code = response.headers["location"].split("code=")[1].split("&")[0]
 
     # 2. Exchange Token POST request with basic auth header
@@ -425,7 +425,7 @@ def test_authorize_retries_through_simulated_db_resume_delay(client, db_session)
         )
 
     response = _grant_consent(client, response)
-    assert response.status_code == 307, response.text
+    assert response.status_code == 303, response.text
     assert "code=" in response.headers["location"]
     assert failures_remaining["n"] == 0
     assert mock_sleep.call_count == 2
@@ -473,7 +473,7 @@ def test_authenticated_session_issues_code(client, db_session):
     }
     response = client.get("/oauth/authorize", params=auth_params, follow_redirects=False)
     response = _grant_consent(client, response)
-    assert response.status_code == 307
+    assert response.status_code == 303
     redirect_url = response.headers["location"]
     assert "code=" in redirect_url
     assert "state=xyz" in redirect_url
@@ -571,7 +571,7 @@ def test_consent_deny_returns_access_denied_and_no_code(client, db_session):
     )
     response = _grant_consent(client, authorize_response, decision="deny")
 
-    assert response.status_code == 307
+    assert response.status_code == 303
     location = response.headers["location"]
     assert "error=access_denied" in location
     assert "state=consent_state" in location
@@ -618,7 +618,7 @@ def test_consent_is_single_use(client, db_session):
         data={"consent_token": token, "decision": "allow"},
         follow_redirects=False,
     )
-    assert first.status_code == 307
+    assert first.status_code == 303
     assert "code=" in first.headers["location"]
 
     # Replaying the same token must not mint a second code.
@@ -657,3 +657,60 @@ def test_consent_page_escapes_client_name(client, db_session):
     assert response.status_code == 200
     assert "<script>alert" not in response.text
     assert "&lt;script&gt;" in response.text
+
+
+def test_consent_redirect_is_followed_as_a_get(client, db_session):
+    """
+    The authorization response must reach the client's callback as a GET.
+
+    This is the regression that broke Claude's connector: RedirectResponse
+    defaults to 307, which preserves the method, so a redirect issued from the
+    consent POST arrived at the callback as a POST and Claude answered
+    405 Method Not Allowed. 303 See Other forces the switch to GET.
+
+    Asserting the status code alone would not have caught it — the original
+    test asserted 307 and passed. This follows the redirect and inspects the
+    method actually used for the final request.
+    """
+    client.get("/auth/test-set-session", params={"entra_object_id": "test-entra-user-id"})
+
+    authorize_response = client.get(
+        "/oauth/authorize", params=CONSENT_AUTH_PARAMS, follow_redirects=False
+    )
+    token = CONSENT_TOKEN_RE.search(authorize_response.text).group(1)
+
+    response = client.post(
+        "/oauth/authorize/consent",
+        data={"consent_token": token, "decision": "allow"},
+        follow_redirects=True,
+    )
+
+    # The hop out of the consent POST must be a 303.
+    assert response.history, "expected the consent POST to redirect"
+    assert response.history[0].status_code == 303
+    assert response.history[0].request.method == "POST"
+
+    # And the request that actually lands on the callback must be a GET
+    # carrying the code — never a POST.
+    assert response.request.method == "GET"
+    assert "code=" in str(response.request.url)
+
+
+def test_consent_deny_redirect_is_followed_as_a_get(client, db_session):
+    """The deny path returns through the same helper and needs the same 303."""
+    client.get("/auth/test-set-session", params={"entra_object_id": "test-entra-user-id"})
+
+    authorize_response = client.get(
+        "/oauth/authorize", params=CONSENT_AUTH_PARAMS, follow_redirects=False
+    )
+    token = CONSENT_TOKEN_RE.search(authorize_response.text).group(1)
+
+    response = client.post(
+        "/oauth/authorize/consent",
+        data={"consent_token": token, "decision": "deny"},
+        follow_redirects=True,
+    )
+
+    assert response.history[0].status_code == 303
+    assert response.request.method == "GET"
+    assert "error=access_denied" in str(response.request.url)
