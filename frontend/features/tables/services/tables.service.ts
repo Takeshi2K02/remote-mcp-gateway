@@ -13,11 +13,11 @@ export interface DatabaseTable {
 }
 
 export async function getDatabaseTables(): Promise<DatabaseTable[]> {
-  return apiRequest<DatabaseTable[]>("/database-tables");
+  return apiRequest<DatabaseTable[]>("/database-tables/");
 }
 
 export async function createDatabaseTable(data: Omit<DatabaseTable, "id" | "is_active" | "created_at" | "last_synced_at">): Promise<DatabaseTable> {
-  return apiRequest<DatabaseTable>("/database-tables", {
+  return apiRequest<DatabaseTable>("/database-tables/", {
     method: "POST",
     body: data,
   });

@@ -2,7 +2,7 @@ import { apiRequest } from "@/lib/api/http-client";
 import { User } from "../types/user.types";
 
 export async function getUsers(): Promise<User[]> {
-  return apiRequest<User[]>("/users");
+  return apiRequest<User[]>("/users/");
 }
 
 export async function getUser(id: number): Promise<User> {

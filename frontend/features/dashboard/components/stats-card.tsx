@@ -28,9 +28,9 @@ export function StatsCard() {
         
         // Fetch all in parallel using apiRequest
         const [servers, databases, tables] = await Promise.all([
-          apiRequest<unknown[]>("/sql-servers"),
-          apiRequest<unknown[]>("/databases"),
-          apiRequest<unknown[]>("/database-tables"),
+          apiRequest<unknown[]>("/sql-servers/"),
+          apiRequest<unknown[]>("/databases/"),
+          apiRequest<unknown[]>("/database-tables/"),
         ]);
 
         setCounts({

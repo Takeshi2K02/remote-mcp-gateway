@@ -12,11 +12,11 @@ export interface DatabaseModel {
 }
 
 export async function getDatabases(): Promise<DatabaseModel[]> {
-  return apiRequest<DatabaseModel[]>("/databases");
+  return apiRequest<DatabaseModel[]>("/databases/");
 }
 
 export async function createDatabase(data: Omit<DatabaseModel, "id" | "created_at" | "last_synced_at">): Promise<DatabaseModel> {
-  return apiRequest<DatabaseModel>("/databases", {
+  return apiRequest<DatabaseModel>("/databases/", {
     method: "POST",
     body: data,
   });

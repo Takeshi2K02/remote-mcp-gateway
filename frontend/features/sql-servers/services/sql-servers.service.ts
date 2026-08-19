@@ -25,11 +25,11 @@ export interface SyncResponse {
 }
 
 export async function getSQLServers(): Promise<SQLServer[]> {
-  return apiRequest<SQLServer[]>("/sql-servers");
+  return apiRequest<SQLServer[]>("/sql-servers/");
 }
 
 export async function createSQLServer(data: Omit<SQLServer, "id" | "created_at">): Promise<SQLServer> {
-  return apiRequest<SQLServer>("/sql-servers", {
+  return apiRequest<SQLServer>("/sql-servers/", {
     method: "POST",
     body: data,
   });
