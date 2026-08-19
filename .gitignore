@@ -1,0 +1,7 @@
+# ── Azure App Service log dumps ───────────────────────────────────────────────
+# Diagnostic bundles pulled down while debugging deployments (the LogFiles/ and
+# deployments/ trees from `az webapp log download`). They are throwaway
+# snapshots of a running site, not source, and each one is a few MB.
+# Matched at any depth, so backend/logs5/ and backend/logs5.zip are covered too.
+logs*/
+logs*.zip
