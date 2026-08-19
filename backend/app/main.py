@@ -50,9 +50,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# The session cookie set here is what /oauth/authorize treats as proof that a
+# human has logged in through Entra. It is therefore the credential that lets a
+# new OAuth client be authorized, so it does not take Starlette's defaults:
+#
+#   https_only=True  — Starlette defaults to False, which omits the Secure
+#       attribute and lets the cookie ride a plaintext request. Azure always
+#       serves this app over HTTPS, so there is nothing to lose by requiring it.
+#   max_age=8h       — Starlette defaults to 1209600 (14 days). A fortnight is
+#       far too long for a cookie that can silently authorize MCP clients; 8
+#       hours is about one working day, after which Entra login is required.
+#   same_site="lax"  — kept deliberately. "strict" would break the Entra round
+#       trip, because the cookie must survive Microsoft's cross-site redirect
+#       back to /auth/callback.
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
+    https_only=True,
+    same_site="lax",
+    max_age=60 * 60 * 8,
 )
 
 app.add_middleware(MCPAuthMiddleware)

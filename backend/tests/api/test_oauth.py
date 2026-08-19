@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta, UTC
 from unittest.mock import patch
 import pytest
@@ -125,9 +126,34 @@ def fixture_client(db_session):
             pass
 
     fastapi_app.dependency_overrides[get_db] = override_get_db
-    with TestClient(fastapi_app) as test_client:
+    # base_url must be https: the session cookie is now created with
+    # https_only=True, and the test client silently drops Secure cookies
+    # served over plain http, which would break every session-based test.
+    with TestClient(fastapi_app, base_url="https://testserver") as test_client:
         yield test_client
     fastapi_app.dependency_overrides.clear()
+
+
+CONSENT_TOKEN_RE = re.compile(r'name="consent_token" value="([^"]+)"')
+
+
+def _grant_consent(client, authorize_response, decision="allow"):
+    """
+    Drive the Allow/Deny interstitial that /oauth/authorize now returns.
+
+    Takes the 200 HTML response from /oauth/authorize, pulls the one-time CSRF
+    token out of the form and posts the decision, returning the resulting
+    redirect (which carries ?code= on allow, or ?error=access_denied on deny).
+    """
+    assert authorize_response.status_code == 200, authorize_response.text
+    match = CONSENT_TOKEN_RE.search(authorize_response.text)
+    assert match, "consent page did not contain a consent_token field"
+
+    return client.post(
+        "/oauth/authorize/consent",
+        data={"consent_token": match.group(1), "decision": decision},
+        follow_redirects=False,
+    )
 
 
 def test_successful_authorization_flow_public(client, db_session):
@@ -148,6 +174,8 @@ def test_successful_authorization_flow_public(client, db_session):
     response = client.get(
         "/oauth/authorize", params=auth_params, follow_redirects=False
     )
+    # /oauth/authorize now renders a consent page instead of issuing a code.
+    response = _grant_consent(client, response)
     assert response.status_code == 307, response.text
     redirect_url = response.headers["location"]
     assert "code=" in redirect_url
@@ -204,6 +232,7 @@ def test_successful_authorization_flow_confidential(client, db_session):
     response = client.get(
         "/oauth/authorize", params=auth_params, follow_redirects=False
     )
+    response = _grant_consent(client, response)
     assert response.status_code == 307, response.text
     code = response.headers["location"].split("code=")[1].split("&")[0]
 
@@ -273,6 +302,7 @@ def test_invalid_pkce_verifier(client, db_session):
     response = client.get(
         "/oauth/authorize", params=auth_params, follow_redirects=False
     )
+    response = _grant_consent(client, response)
     code = response.headers["location"].split("code=")[1].split("&")[0]
 
     # Exchange Token with invalid verifier
@@ -394,6 +424,7 @@ def test_authorize_retries_through_simulated_db_resume_delay(client, db_session)
             "/oauth/authorize", params=auth_params, follow_redirects=False
         )
 
+    response = _grant_consent(client, response)
     assert response.status_code == 307, response.text
     assert "code=" in response.headers["location"]
     assert failures_remaining["n"] == 0
@@ -441,6 +472,7 @@ def test_authenticated_session_issues_code(client, db_session):
         "state": "xyz",
     }
     response = client.get("/oauth/authorize", params=auth_params, follow_redirects=False)
+    response = _grant_consent(client, response)
     assert response.status_code == 307
     redirect_url = response.headers["location"]
     assert "code=" in redirect_url
@@ -494,3 +526,134 @@ async def test_auth_callback_creates_new_user(client, db_session):
         assert user.email == "new-user@example.com"
         assert user.full_name == "New User"
         assert user.is_active is True
+
+
+# ---------------------------------------------------------------------------
+# Consent interstitial
+#
+# /oauth/authorize used to mint a code the moment it found a session, so any
+# page that could trigger a top-level navigation to it with an allowlisted
+# redirect_uri got a code for the logged-in user. These cover the gate that
+# replaced that.
+# ---------------------------------------------------------------------------
+
+CONSENT_AUTH_PARAMS = {
+    "client_id": "client_public_id",
+    "redirect_uri": "http://localhost/callback",
+    "response_type": "code",
+    "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+    "code_challenge_method": "S256",
+    "scope": "mcp",
+    "state": "consent_state",
+}
+
+
+def test_authorize_shows_consent_page_instead_of_issuing_code(client, db_session):
+    client.get("/auth/test-set-session", params={"entra_object_id": "test-entra-user-id"})
+
+    response = client.get(
+        "/oauth/authorize", params=CONSENT_AUTH_PARAMS, follow_redirects=False
+    )
+
+    # Not a redirect carrying a code — an HTML page asking the user.
+    assert response.status_code == 200
+    assert "code=" not in response.headers.get("location", "")
+    assert "Allow" in response.text
+    assert "Deny" in response.text
+    assert CONSENT_TOKEN_RE.search(response.text)
+
+
+def test_consent_deny_returns_access_denied_and_no_code(client, db_session):
+    client.get("/auth/test-set-session", params={"entra_object_id": "test-entra-user-id"})
+
+    authorize_response = client.get(
+        "/oauth/authorize", params=CONSENT_AUTH_PARAMS, follow_redirects=False
+    )
+    response = _grant_consent(client, authorize_response, decision="deny")
+
+    assert response.status_code == 307
+    location = response.headers["location"]
+    assert "error=access_denied" in location
+    assert "state=consent_state" in location
+    assert "code=" not in location
+
+
+def test_consent_rejects_wrong_csrf_token(client, db_session):
+    client.get("/auth/test-set-session", params={"entra_object_id": "test-entra-user-id"})
+    client.get("/oauth/authorize", params=CONSENT_AUTH_PARAMS, follow_redirects=False)
+
+    response = client.post(
+        "/oauth/authorize/consent",
+        data={"consent_token": "not-the-real-token", "decision": "allow"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 400
+    assert "code=" not in response.headers.get("location", "")
+
+
+def test_consent_without_pending_request_is_rejected(client, db_session):
+    """A forged POST from a session that never visited /oauth/authorize."""
+    client.get("/auth/test-set-session", params={"entra_object_id": "test-entra-user-id"})
+
+    response = client.post(
+        "/oauth/authorize/consent",
+        data={"consent_token": "anything", "decision": "allow"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 400
+
+
+def test_consent_is_single_use(client, db_session):
+    client.get("/auth/test-set-session", params={"entra_object_id": "test-entra-user-id"})
+
+    authorize_response = client.get(
+        "/oauth/authorize", params=CONSENT_AUTH_PARAMS, follow_redirects=False
+    )
+    token = CONSENT_TOKEN_RE.search(authorize_response.text).group(1)
+
+    first = client.post(
+        "/oauth/authorize/consent",
+        data={"consent_token": token, "decision": "allow"},
+        follow_redirects=False,
+    )
+    assert first.status_code == 307
+    assert "code=" in first.headers["location"]
+
+    # Replaying the same token must not mint a second code.
+    second = client.post(
+        "/oauth/authorize/consent",
+        data={"consent_token": token, "decision": "allow"},
+        follow_redirects=False,
+    )
+    assert second.status_code == 400
+
+
+def test_consent_page_escapes_client_name(client, db_session):
+    """client_name is admin-supplied and must not be injected as raw markup."""
+    from app.models.oauth_client import OAuthClient
+
+    db_session.add(
+        OAuthClient(
+            client_id="client_xss_id",
+            client_name='<script>alert("xss")</script>',
+            client_type="public",
+            client_secret_hash=None,
+            redirect_uris=["http://localhost/callback"],
+            allowed_scopes=["mcp"],
+            is_active=True,
+        )
+    )
+    db_session.commit()
+
+    client.get("/auth/test-set-session", params={"entra_object_id": "test-entra-user-id"})
+    response = client.get(
+        "/oauth/authorize",
+        params={**CONSENT_AUTH_PARAMS, "client_id": "client_xss_id"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200
+    assert "<script>alert" not in response.text
+    assert "&lt;script&gt;" in response.text
