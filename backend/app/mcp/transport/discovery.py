@@ -5,15 +5,42 @@ router = APIRouter()
 settings = get_settings()
 
 
-@router.get("/.well-known/oauth-protected-resource")
-def get_oauth_protected_resource_metadata():
-    """Exposes RFC 9728 OAuth Protected Resource Metadata."""
+def _protected_resource_metadata() -> dict:
+    """RFC 9728 OAuth Protected Resource Metadata for the MCP endpoint."""
     return {
         "resource": settings.mcp_endpoint_url,
         "authorization_servers": [settings.backend_base_url],
         "scopes_supported": ["mcp"],
         "bearer_methods_supported": ["header"],
     }
+
+
+@router.get("/.well-known/oauth-protected-resource")
+def get_oauth_protected_resource_metadata():
+    """
+    Metadata at the bare well-known path.
+
+    Kept for clients that request it without the resource path appended.
+    """
+    return _protected_resource_metadata()
+
+
+@router.get("/.well-known/oauth-protected-resource/{resource_path:path}")
+def get_oauth_protected_resource_metadata_for_path(resource_path: str):
+    """
+    Metadata at the path-suffixed well-known location.
+
+    RFC 9728 section 3.1 inserts the protected resource's own path after
+    /.well-known/oauth-protected-resource, so a resource served at
+    https://host/mcp publishes its metadata at
+    https://host/.well-known/oauth-protected-resource/mcp. Current MCP clients
+    probe that form first and previously got a 404 here, leaving them to fall
+    back or fail outright.
+
+    This gateway exposes exactly one protected resource, so every suffix
+    resolves to the same document rather than being matched against a registry.
+    """
+    return _protected_resource_metadata()
 
 
 @router.get("/.well-known/oauth-authorization-server")
