@@ -1,0 +1,100 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Frontend CI – lint, type-check and build
+#
+# Quality gate only. Deployment lives in deploy-frontend.yml and is deliberately
+# not touched here — that workflow builds the artifact that actually ships, with
+# the real API base URL baked in. This one only proves the tree is sound.
+#
+# Runs on pull requests targeting main and on direct pushes to main.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Frontend CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Lint, type-check and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Node 22 matches the App Service runtime that deploy-frontend.yml targets.
+      # Checking against a different major than the one that serves the app would
+      # let a version-specific break through.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci`, not `npm install`: installs exactly the lockfile and never
+      # rewrites it, so a corrupted lockfile fails here rather than being
+      # quietly repaired.
+      - name: Install dependencies
+        run: npm ci
+
+      # Blocking. The tree is currently clean of ESLint errors and warnings.
+      # Note this does not pass --max-warnings=0, so warnings report without
+      # failing; tighten it here if that should become a hard gate.
+      - name: Lint
+        run: npm run lint
+
+      # `next build` runs TypeScript too, but only over what the bundler reaches.
+      # This covers the whole project, including files no route imports yet.
+      - name: Type check
+        run: npm run typecheck
+
+      # lib/config/env.ts throws when NEXT_PUBLIC_API_BASE_URL is missing, so the
+      # build needs a value. This one is a placeholder: Next inlines it into the
+      # client bundle at build time, and this job's bundle is discarded — the
+      # artifact that ships is built by deploy-frontend.yml with the real URL.
+      # Keeping the production URL out of here avoids having it in two places
+      # that can silently disagree.
+      - name: Build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: 'https://ci.invalid'
+        run: npm run build
+
+      # There is no test runner in the project yet. Rather than hardcode a
+      # `npm test` that would fail with "missing script", this checks for one and
+      # reports its absence in the summary — so adding a `test` script is all it
+      # takes to turn this into a real step, and until then the gap stays visible
+      # instead of looking like passing coverage.
+      - name: Test
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.test ? 0 : 1)"; then
+            npm test
+          else
+            echo "No 'test' script in frontend/package.json - skipping."
+            {
+              echo "### Frontend tests: none configured"
+              echo "No \`test\` script exists in \`frontend/package.json\`, so no tests ran."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

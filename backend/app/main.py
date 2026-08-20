@@ -7,6 +7,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.mcp.transport.lifespan import mcp_lifespan
 from app.mcp.transport.http import mcp_asgi_app
 from app.mcp.transport.discovery import router as discovery_router
+from app.api.audit_logs import router as audit_log_router
 from app.api.auth import router as auth_router
 from app.api.database_tables import router as database_table_router
 from app.api.databases import router as database_router
@@ -130,6 +131,7 @@ app.include_router(oauth_clients_router)
 app.include_router(oauth_router)
 app.include_router(discovery_router)
 app.include_router(users_router)
+app.include_router(audit_log_router)
 # The methods the MCP Streamable HTTP app actually implements. It answers
 # "Allow: GET, POST, DELETE" itself — GET opens the SSE stream, POST carries
 # JSON-RPC, DELETE terminates a session. DELETE was previously missing from the

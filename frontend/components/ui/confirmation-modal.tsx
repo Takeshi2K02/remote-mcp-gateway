@@ -43,11 +43,11 @@ export function ConfirmationModal({
       case "destructive":
         return "text-destructive";
       case "warning":
-        return "text-amber-500 dark:text-amber-400";
+        return "text-warning";
       case "success":
-        return "text-emerald-500 dark:text-emerald-400";
+        return "text-success";
       case "info":
-        return "text-sky-500 dark:text-sky-400";
+        return "text-info";
       default:
         return "text-primary";
     }
@@ -55,13 +55,13 @@ export function ConfirmationModal({
 
   const getCustomButtonClass = () => {
     if (variant === "warning") {
-      return "bg-amber-500 hover:bg-amber-600 text-white dark:bg-amber-600 dark:hover:bg-amber-700 border-transparent shadow-sm";
+      return "bg-warning text-primary-foreground hover:brightness-95";
     }
     if (variant === "success") {
-      return "bg-emerald-500 hover:bg-emerald-600 text-white dark:bg-emerald-600 dark:hover:bg-emerald-700 border-transparent shadow-sm";
+      return "bg-success text-primary-foreground hover:brightness-95";
     }
     if (variant === "info") {
-      return "bg-sky-500 hover:bg-sky-600 text-white dark:bg-sky-600 dark:hover:bg-sky-700 border-transparent shadow-sm";
+      return "bg-info text-primary-foreground hover:brightness-95";
     }
     return "";
   };

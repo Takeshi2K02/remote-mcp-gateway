@@ -4,160 +4,335 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ==========================================================================
+   MCP Gateway console theme
+   --------------------------------------------------------------------------
+   Every colour the console draws is declared once here and consumed through a
+   Tailwind token. Nothing below should be re-stated as a literal in a
+   component: a page that hard-codes #3b82f6 stops following the theme the
+   moment this file changes, which is exactly what the previous pass of pages
+   did and why they drifted apart.
+
+   The palette is light-first. The sidebar is the one surface that stays dark
+   charcoal in both schemes, so its tokens are absolute values rather than
+   inversions of the page tokens.
+   ========================================================================== */
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
   --font-heading: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
+
+  /* Surfaces */
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  /* Brand + neutrals */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle: var(--subtle);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-link: var(--link);
+
+  /* Lines and fields */
   --color-border: var(--border);
+  --color-input: var(--input);
+  --color-field: var(--field);
+  --color-ring: var(--ring);
+  --color-row-border: var(--row-border);
+  --color-row-hover: var(--row-hover);
+
+  /* Status pills. Foreground/background pairs, not opacity blends, so a pill
+     keeps its exact contrast wherever it is placed. */
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-bg: var(--destructive-bg);
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-success-bg: var(--success-bg);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-warning-bg: var(--warning-bg);
   --color-info: var(--info);
-  --color-info-foreground: var(--info-foreground);
   --color-info-bg: var(--info-bg);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
+  --color-neutral: var(--neutral);
+  --color-neutral-bg: var(--neutral-bg);
+
+  /* Dashboard stat tiles: pastel block + saturated icon + darkened label */
+  --color-tile-blue: var(--tile-blue);
+  --color-tile-blue-icon: var(--tile-blue-icon);
+  --color-tile-blue-label: var(--tile-blue-label);
+  --color-tile-violet: var(--tile-violet);
+  --color-tile-violet-icon: var(--tile-violet-icon);
+  --color-tile-violet-label: var(--tile-violet-label);
+  --color-tile-green: var(--tile-green);
+  --color-tile-green-icon: var(--tile-green-icon);
+  --color-tile-green-label: var(--tile-green-label);
+  --color-tile-amber: var(--tile-amber);
+  --color-tile-amber-icon: var(--tile-amber-icon);
+  --color-tile-amber-label: var(--tile-amber-label);
+  /* Shared by all four tiles: the circular icon disc and the numeral. */
+  --color-tile-badge: var(--tile-badge);
+  --color-tile-value: var(--tile-value);
+
+  /* Charts */
+  --color-chart-granted: var(--chart-granted);
+  --color-chart-restricted: var(--chart-restricted);
+  --color-chart-bar: var(--chart-bar);
+
+  /* Sidebar */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-section: var(--sidebar-section);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-action: var(--sidebar-action);
+  --color-sidebar-user: var(--sidebar-user);
+  --color-sidebar-user-muted: var(--sidebar-user-muted);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* 10px base gives cards 14px (xl), buttons 10px (lg), fields 8px (md) —
+     the three radii the design actually uses. */
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+
+  --shadow-card: var(--card-shadow);
 }
 
 :root {
-  --background: oklch(0.982 0.002 240);
-  --foreground: oklch(0.27 0.015 250);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.27 0.015 250);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.27 0.015 250);
-  --primary: oklch(0.51 0.19 264);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.96 0.005 250);
-  --secondary-foreground: oklch(0.27 0.015 250);
-  --muted: oklch(0.96 0.005 250);
-  --muted-foreground: oklch(0.55 0.015 250);
-  --accent: oklch(0.96 0.005 250);
-  --accent-foreground: oklch(0.27 0.015 250);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --destructive-bg: oklch(0.97 0.03 27.325);
-  --success: oklch(0.52 0.15 145);
-  --success-foreground: oklch(0.985 0 0);
-  --success-bg: oklch(0.97 0.03 145);
-  --warning: oklch(0.65 0.16 75);
-  --warning-foreground: oklch(0.985 0 0);
-  --warning-bg: oklch(0.97 0.035 75);
-  --info: oklch(0.6 0.13 240);
-  --info-foreground: oklch(0.985 0 0);
-  --info-bg: oklch(0.97 0.025 240);
-  --border: oklch(0.92 0.008 250);
-  --input: oklch(0.92 0.008 250);
-  --ring: oklch(0.51 0.19 264 / 50%);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --background: #f2f4f8;
+  --foreground: #1f2430;
+
+  --card: #ffffff;
+  --card-foreground: #1f2430;
+  --card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --popover: #ffffff;
+  --popover-foreground: #1f2430;
+
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #f2f4f8;
+  --secondary-foreground: #4b5261;
+
+  --muted: #f7f8fa;
+  --muted-foreground: #6b7280;
+  /* One step quieter than muted — timestamps, column heads, row meta. */
+  --subtle: #f7f8fa;
+  --subtle-foreground: #9aa0ab;
+
+  --accent: #eaf1fd;
+  --accent-foreground: #1f2430;
+  --link: #3b6fe0;
+
+  --border: #eceff3;
+  --input: #e2e5ea;
+  --field: #f7f8fa;
+  --ring: #a9c3f5;
+  --row-border: #f2f4f8;
+  --row-hover: #fafbfc;
+
+  --success: #1e9e5c;
+  --success-bg: #e3f8ea;
+  --warning: #92660a;
+  --warning-bg: #fff2d6;
+  --destructive: #d0453f;
+  --destructive-foreground: #ffffff;
+  --destructive-bg: #fde8e8;
+  --info: #3b6fe0;
+  --info-bg: #e2ecff;
+  --neutral: #5b6472;
+  --neutral-bg: #eef1f5;
+
+  --tile-blue: #d9ecfc;
+  --tile-blue-icon: #2f7fbd;
+  --tile-blue-label: #3d5975;
+  --tile-violet: #e7e0fb;
+  --tile-violet-icon: #7c5cd6;
+  --tile-violet-label: #4d3f74;
+  --tile-green: #dbf5e6;
+  --tile-green-icon: #1f8f5e;
+  --tile-green-label: #265c40;
+  --tile-amber: #ffe9d1;
+  --tile-amber-icon: #c9791f;
+  --tile-amber-label: #7a4a12;
+  --tile-badge: #ffffff;
+  --tile-value: #1f2430;
+
+  --chart-granted: #8ec8f2;
+  --chart-restricted: #cdbcf7;
+  --chart-bar: #bfe0fb;
+
+  /* Avatar tints, indexed 1..5 and picked by hashing the seed string so the
+     same person keeps the same colour across every table. */
+  --avatar-1-bg: #d6ecfb;
+  --avatar-1-fg: #2f7fbd;
+  --avatar-2-bg: #e6defb;
+  --avatar-2-fg: #7c5cd6;
+  --avatar-3-bg: #d9f5e3;
+  --avatar-3-fg: #1f8f5e;
+  --avatar-4-bg: #ffe9d1;
+  --avatar-4-fg: #c9791f;
+  --avatar-5-bg: #fbe0ec;
+  --avatar-5-fg: #c94f8e;
+
+  --sidebar: #1c1d22;
+  --sidebar-foreground: #9096a3;
+  --sidebar-accent: #2c2e36;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-primary: #8fb0f5;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-section: #5a5f6c;
+  --sidebar-muted: #6a6f7c;
+  --sidebar-action: #a5aab5;
+  --sidebar-user: #f0f1f4;
+  --sidebar-user-muted: #7d828e;
+  --sidebar-ring: #5b8def;
+
   --radius: 0.625rem;
-  --sidebar: oklch(0.982 0.002 240);
-  --sidebar-foreground: oklch(0.27 0.015 250);
-  --sidebar-primary: oklch(0.51 0.19 264);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.96 0.005 250);
-  --sidebar-accent-foreground: oklch(0.27 0.015 250);
-  --sidebar-border: oklch(0.92 0.008 250);
-  --sidebar-ring: oklch(0.51 0.19 264 / 50%);
 }
 
+/* The console is a light-theme design; this is the same palette re-grounded so
+   the Appearance control on Settings is not a dead switch. Surfaces darken,
+   the accent lifts for contrast, and the status pairs invert to tinted-on-dark
+   while keeping their hues. The sidebar tokens are deliberately absent — it is
+   already charcoal and must not change. */
 .dark {
-  --background: oklch(0.14 0.012 250);
-  --foreground: oklch(0.90 0.01 250);
-  --card: oklch(0.18 0.015 250);
-  --card-foreground: oklch(0.90 0.01 250);
-  --popover: oklch(0.18 0.015 250);
-  --popover-foreground: oklch(0.90 0.01 250);
-  --primary: oklch(0.68 0.19 264);
-  --primary-foreground: oklch(0.145 0 0);
-  --secondary: oklch(0.22 0.015 250);
-  --secondary-foreground: oklch(0.90 0.01 250);
-  --muted: oklch(0.22 0.015 250);
-  --muted-foreground: oklch(0.65 0.015 250);
-  --accent: oklch(0.22 0.015 250);
-  --accent-foreground: oklch(0.90 0.01 250);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.145 0 0);
-  --destructive-bg: oklch(0.27 0.05 22.216);
-  --success: oklch(0.72 0.17 145);
-  --success-foreground: oklch(0.145 0 0);
-  --success-bg: oklch(0.27 0.05 145);
-  --warning: oklch(0.79 0.17 80);
-  --warning-foreground: oklch(0.145 0 0);
-  --warning-bg: oklch(0.29 0.05 80);
-  --info: oklch(0.75 0.13 230);
-  --info-foreground: oklch(0.145 0 0);
-  --info-bg: oklch(0.28 0.045 230);
-  --border: oklch(0.24 0.015 250 / 60%);
-  --input: oklch(0.24 0.015 250 / 60%);
-  --ring: oklch(0.68 0.19 264 / 50%);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.18 0.015 250);
-  --sidebar-foreground: oklch(0.90 0.01 250);
-  --sidebar-primary: oklch(0.68 0.19 264);
-  --sidebar-primary-foreground: oklch(0.145 0 0);
-  --sidebar-accent: oklch(0.22 0.015 250);
-  --sidebar-accent-foreground: oklch(0.90 0.01 250);
-  --sidebar-border: oklch(0.24 0.015 250 / 60%);
-  --sidebar-ring: oklch(0.68 0.19 264 / 50%);
+  --background: #14161b;
+  --foreground: #e6e8ee;
+
+  --card: #1c1e24;
+  --card-foreground: #e6e8ee;
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --popover: #1c1e24;
+  --popover-foreground: #e6e8ee;
+
+  --primary: #5b9bf8;
+  --primary-foreground: #0f1115;
+  --secondary: #23262e;
+  --secondary-foreground: #c2c7d2;
+
+  --muted: #23262e;
+  --muted-foreground: #9aa0ab;
+  --subtle: #23262e;
+  --subtle-foreground: #767c88;
+
+  --accent: #263449;
+  --accent-foreground: #e6e8ee;
+  --link: #7aa7f5;
+
+  --border: #262932;
+  --input: #333741;
+  --field: #23262e;
+  --ring: #3f6bb5;
+  --row-border: #23262e;
+  --row-hover: #212430;
+
+  --success: #4bc98a;
+  --success-bg: #16301f;
+  --warning: #e0a63a;
+  --warning-bg: #33280f;
+  --destructive: #f0736d;
+  --destructive-foreground: #0f1115;
+  --destructive-bg: #351b1b;
+  --info: #7aa7f5;
+  --info-bg: #1b2740;
+  --neutral: #a2a9b7;
+  --neutral-bg: #262932;
+
+  --tile-blue: #22384a;
+  --tile-blue-icon: #7cc0ee;
+  --tile-blue-label: #a8c9e2;
+  --tile-violet: #2f2a45;
+  --tile-violet-icon: #b49df0;
+  --tile-violet-label: #c3b6e4;
+  --tile-green: #1d3a2b;
+  --tile-green-icon: #66c795;
+  --tile-green-label: #a5cfb8;
+  --tile-amber: #3a2d1c;
+  --tile-amber-icon: #e0a463;
+  --tile-amber-label: #d5bb98;
+  --tile-badge: #12141a;
+  --tile-value: #e6e8ee;
+
+  --chart-granted: #5a9fd4;
+  --chart-restricted: #8f7bc4;
+  --chart-bar: #4b7ea8;
+
+  --avatar-1-bg: #22384a;
+  --avatar-1-fg: #7cc0ee;
+  --avatar-2-bg: #2f2a45;
+  --avatar-2-fg: #b49df0;
+  --avatar-3-bg: #1d3a2b;
+  --avatar-3-fg: #66c795;
+  --avatar-4-bg: #3a2d1c;
+  --avatar-4-fg: #e0a463;
+  --avatar-5-bg: #3d2430;
+  --avatar-5-fg: #e08bb4;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
   html {
-    @apply font-sans;
+    @apply font-sans antialiased;
+  }
+
+  /* The design's fields carry no focus ring — the border turns blue instead.
+     Stated once here so every input does it without opting in. */
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    @apply border-ring outline-none;
+  }
+
+  ::placeholder {
+    color: var(--subtle-foreground);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--input);
+    border-radius: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* The console's one repeating container: white block, hairline border,
+     barely-there shadow, 14px corners. Used by every table card, chart card
+     and panel, which is why it is a class and not copied per component. */
+  .surface-card {
+    @apply rounded-xl border border-border bg-card shadow-card;
   }
 }

@@ -1,0 +1,115 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Backend CI – lint and test
+#
+# Quality gate only. Deployment lives in deploy-backend.yml and is deliberately
+# not touched here: that workflow needs Azure credentials and its own trigger
+# semantics, and folding the two together would mean a lint failure and a failed
+# deploy are the same red X.
+#
+# Runs on pull requests targeting main (so a PR is checked before it lands) and
+# on direct pushes to main (so a push that bypasses review is still checked).
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+  workflow_dispatch:
+
+# Supersede an in-flight run when new commits land on the same ref. On a PR that
+# is force-pushed repeatedly this is the difference between one useful result
+# and a queue of stale ones.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Runner-wide, so every step gets the same interpreter and pip behaviour.
+env:
+  # Matches backend/Dockerfile (python:3.12-slim) and ruff.toml's
+  # target-version = "py312". A newer runner default would lint and test against
+  # a Python the app never runs on.
+  PYTHON_VERSION: '3.12'
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
+
+jobs:
+  quality:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    # app.core.config.Settings declares these with no default, and importing
+    # app.main constructs it — so without them the suite fails at collection,
+    # not in a test. Locally they come from backend/.env, which is gitignored
+    # and therefore absent here; they are supplied explicitly instead.
+    #
+    # Every value is a throwaway. Nothing in the suite opens a socket: the DB
+    # fixtures swap SessionLocal for in-memory SQLite, and the Entra values are
+    # only ever read back as configuration.
+    #
+    # MCP_ALLOWED_HOSTS is deliberately NOT set. tests/api/test_mcp_transport.py
+    # asserts that the Azure host in the field's default is accepted, so leaving
+    # it unset exercises the shipped default — and if someone narrows that
+    # default, the test fails, which is the signal we want. (It is also why that
+    # test fails on a developer machine whose .env narrows the list: a local
+    # environment artefact, not a defect, and not something to xfail.)
+    env:
+      APP_ENV: test
+      SECRET_KEY: ci-not-a-real-secret
+      APP_JWT_SECRET_KEY: ci-not-a-real-jwt-secret
+      DB_HOST: localhost
+      DB_NAME: ci
+      DB_USERNAME: ci
+      DB_PASSWORD: ci
+      DB_DRIVER: ODBC Driver 18 for SQL Server
+      ENTRA_TENANT_ID: 00000000-0000-0000-0000-000000000000
+      ENTRA_CLIENT_ID: 00000000-0000-0000-0000-000000000001
+      ENTRA_CLIENT_SECRET: ci-not-a-real-client-secret
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # cache: 'pip' keys the wheel cache on the dependency file below, so a run
+      # that changes no dependencies restores wheels instead of rebuilding them.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      # requirements-dev.txt starts with `-r requirements.txt`, so this single
+      # install covers the app, pytest and ruff. Versions are pinned there;
+      # nothing is resolved loosely at CI time.
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # Blocking. ruff.toml already excludes .venv and friends by default, so
+      # this is the same command that passes locally.
+      - name: Lint (ruff)
+        run: ruff check .
+
+      # No type-check step: the repo has no mypy, and the pyrefly.toml /
+      # pyrightconfig.json that exist both point at backend/.venv, an
+      # interpreter that does not exist on a runner. Adding one means adding the
+      # checker to requirements-dev.txt and fixing whatever it finds — worth
+      # doing, but as its own change rather than smuggled into CI setup.
+
+      - name: Test (pytest)
+        run: pytest -q

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict
 
 
@@ -23,3 +23,32 @@ class AuditLogResponse(AuditLogCreate):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class AuditLogRead(BaseModel):
+    """
+    Read model for the admin console.
+
+    The stored row references its user/server/database/table by id only, so the
+    console would otherwise have to fetch four more collections and join them
+    client-side just to render one line. The resolved names are folded in here
+    instead, which is also why this is a separate schema from AuditLogResponse
+    (the write-shaped echo used when a row is recorded).
+    """
+
+    id: int
+    created_at: datetime
+    actor_name: str
+    actor_email: str
+    action: str
+    tool_name: str
+    target: str
+    status: str
+    detail: str | None = None
+    request_id: str
+    duration_ms: int | None = None
+    row_count: int | None = None
+
+
+class ActivityVolumePoint(BaseModel):
+    day: date
+    count: int
