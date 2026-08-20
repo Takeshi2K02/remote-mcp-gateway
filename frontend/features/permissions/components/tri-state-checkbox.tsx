@@ -1,70 +1,70 @@
 "use client";
 
-import * as React from "react";
+import { Check, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CheckedState } from "../types/permission-tree.types";
+import type { CheckedState } from "../types/permission-tree.types";
+
+const SIZE_CLASSES = {
+  sm: "h-4 w-4",
+  md: "h-4.25 w-4.25",
+  lg: "h-4.5 w-4.5",
+} as const;
 
 interface TriStateCheckboxProps {
   state: CheckedState;
   onChange: () => void;
+  /** Names the resource being toggled — the control has no visible label. */
+  label: string;
+  size?: keyof typeof SIZE_CLASSES;
   disabled?: boolean;
   className?: string;
-  id?: string;
 }
 
+/**
+ * Three-state checkbox for the access tree.
+ *
+ * `aria-checked="mixed"` is what tells a screen reader that a server is partly
+ * granted; the dimmed fill is only the sighted half of that signal.
+ */
 export function TriStateCheckbox({
   state,
   onChange,
+  label,
+  size = "md",
   disabled = false,
   className,
-  id,
 }: TriStateCheckboxProps) {
+  const ariaChecked = state === "indeterminate" ? "mixed" : state === "checked";
+
   return (
     <button
       type="button"
-      id={id}
+      role="checkbox"
+      aria-checked={ariaChecked}
+      aria-label={label}
       disabled={disabled}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (!disabled) onChange();
+      onClick={(event) => {
+        event.stopPropagation();
+        onChange();
       }}
       className={cn(
-        "h-4 w-4 shrink-0 rounded border transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center cursor-pointer",
-        state === "checked" && "bg-primary border-primary text-primary-foreground",
-        state === "indeterminate" && "bg-primary/90 border-primary text-primary-foreground",
-        state === "unchecked" && "border-input bg-card hover:bg-muted/50",
+        "flex shrink-0 items-center justify-center rounded-[5px] border-[1.5px] transition-colors",
+        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        SIZE_CLASSES[size],
+        state === "checked" && "border-primary bg-primary text-primary-foreground",
+        state === "indeterminate" &&
+          "border-primary bg-primary text-primary-foreground opacity-55",
+        state === "unchecked" && "border-input bg-card hover:border-ring",
         className
       )}
     >
       {state === "checked" && (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="3.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-3 w-3"
-        >
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
+        <Check aria-hidden="true" className="h-3 w-3" strokeWidth={3.5} />
       )}
       {state === "indeterminate" && (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-2 w-2"
-        >
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
+        <Minus aria-hidden="true" className="h-2.5 w-2.5" strokeWidth={4} />
       )}
     </button>
   );
 }
-export default TriStateCheckbox;
